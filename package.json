@@ -1,0 +1,12 @@
+{
+  "name": "test-case-manager",
+  "version": "1.0.0",
+  "description": "Team-shared Test Case Manager — QA tool for game studios",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

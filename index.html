@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧪 Test Case Manager</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080c15;--surface:#0d1424;--card:#141e30;--card2:#1a2840;
+  --border:rgba(255,255,255,.07);--bh:rgba(255,255,255,.13);
+  --accent:#6366f1;--ag:linear-gradient(135deg,#6366f1,#818cf8);
+  --text:#e2e8f0;--dim:#94a3b8;--muted:#4b5e79;
+  --pass:#22c55e;--fail:#ef4444;--blocked:#f59e0b;--inprog:#3b82f6;--notrun:#4b5e79;--skip:#a855f7;
+  --crit:#ef4444;--high:#f59e0b;--med:#6366f1;--low:#4b5e79;
+  --sh:0 8px 32px rgba(0,0,0,.5);--rad:10px;--tr:.18s ease;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px}
+#app{display:flex;flex-direction:column;height:100vh}
+
+/* Header */
+#hdr{display:flex;align-items:center;gap:7px;padding:0 14px;height:52px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;z-index:10}
+.logo{font-weight:700;font-size:15px;background:var(--ag);-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap;margin-right:4px}
+.pl{font-size:11px;color:var(--muted);white-space:nowrap}
+#proj-sel{background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;font-family:inherit;max-width:130px}
+.hsp{flex:1}
+.srv-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.hbtn{display:flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--border);background:var(--card);color:var(--dim);border-radius:7px;font-size:11px;cursor:pointer;transition:var(--tr);font-family:inherit;white-space:nowrap;flex-shrink:0}
+.hbtn:hover{background:var(--card2);border-color:var(--bh);color:var(--text)}
+.hbtn.ac{background:var(--accent);border-color:transparent;color:#fff}.hbtn.ac:hover{opacity:.88}
+.hbtn.doc{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3);color:#818cf8}.hbtn.doc:hover{background:rgba(99,102,241,.25)}
+
+/* Navigation tabs */
+#nav{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 14px;flex-shrink:0}
+.nav-btn{padding:0 16px;height:40px;border:none;background:transparent;color:var(--dim);font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:var(--tr)}
+.nav-btn:hover{color:var(--text)}
+.nav-btn.on{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* Views */
+#views{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.view{flex:1;display:none;overflow:hidden}
+.view.on{display:flex}
+
+/* ── Dashboard ── */
+#view-dashboard{flex-direction:column;overflow-y:auto;padding:24px}
+.db-head{display:flex;align-items:center;margin-bottom:20px}
+.db-head h2{font-size:18px;font-weight:700;flex:1}
+.db-proj-sel{background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:7px;font-size:12px;cursor:pointer;outline:none;font-family:inherit}
+.db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:24px}
+.db-stat-card{background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:16px;text-align:center}
+.db-stat-card .val{font-size:28px;font-weight:700;line-height:1.2}
+.db-stat-card .lbl{font-size:11px;color:var(--muted);font-weight:500;margin-top:4px}
+.db-sec-title{font-size:12px;font-weight:600;letter-spacing:.6px;color:var(--muted);text-transform:uppercase;margin-bottom:12px}
+.stack-bar{height:10px;border-radius:5px;display:flex;overflow:hidden;background:var(--card2);margin:10px 0}
+.stack-seg{height:100%;transition:width .5s}
+.stack-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-bottom:16px}
+.ll{display:flex;align-items:center;gap:4px}.ld{width:8px;height:8px;border-radius:50%}
+.run-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:12px 16px;margin-bottom:8px;cursor:pointer;transition:var(--tr)}
+.run-row:hover{border-color:var(--bh);background:var(--card2)}
+.run-row .rr-name{font-weight:600;font-size:13px;flex:1}
+.run-row .rr-meta{font-size:11px;color:var(--muted)}
+.run-badge{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+
+/* ── Test Cases (sidebar+detail) ── */
+#view-cases{display:none}
+#view-cases.on{display:flex}
+#sidebar{width:290px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--surface);flex-shrink:0}
+#sh{padding:10px 12px;border-bottom:1px solid var(--border)}
+.sw{position:relative;margin-bottom:7px}
+.sw input{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);padding:6px 10px 6px 28px;border-radius:7px;font-size:12px;outline:none;transition:var(--tr);font-family:inherit}
+.sw input:focus{border-color:var(--accent)}
+.sw::before{content:'🔍';position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;pointer-events:none}
+.fr{display:flex;gap:5px;flex-wrap:wrap}
+.fb{padding:3px 8px;border-radius:20px;font-size:10px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--dim);transition:var(--tr);font-family:inherit}
+.fb:hover,.fb.on{background:var(--accent);border-color:transparent;color:#fff}
+#cl{flex:1;overflow-y:auto;padding:4px 0}
+.ci{display:flex;align-items:center;gap:7px;padding:9px 12px;cursor:pointer;border-left:3px solid transparent;transition:var(--tr)}
+.ci:hover{background:rgba(255,255,255,.03)}
+.ci.on{background:rgba(99,102,241,.12);border-left-color:var(--accent)}
+.cd{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.cf{flex:1;min-width:0}
+.ci-id{font-size:10px;color:var(--muted);font-weight:600}
+.ci-s{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.ci-m{font-size:10px;color:var(--muted);margin-top:1px}
+#detail{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#dp{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted)}
+#dp .ic{font-size:44px;opacity:.25}
+#dd{flex:1;overflow-y:auto;padding:22px 26px;display:none}
+.dh textarea{width:100%;background:transparent;border:none;color:var(--text);font-size:17px;font-weight:600;font-family:inherit;resize:none;outline:none;line-height:1.4;margin-bottom:14px}
+.dm{display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.cs{background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 9px;border-radius:6px;font-size:12px;cursor:pointer;outline:none;font-family:inherit}
+.sc{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;border:none;font-family:inherit}
+.fail-info{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px}
+.fail-info .fr-lbl{font-size:10px;color:var(--fail);font-weight:700;letter-spacing:.4px;margin-bottom:4px}
+.fail-info a{color:var(--inprog);text-decoration:underline}
+.sl{font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--muted);text-transform:uppercase;margin-bottom:8px}
+.sk{background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:12px;margin-bottom:9px}
+.sk:hover{border-color:var(--bh)}
+.sn{font-size:10px;font-weight:700;color:var(--muted);margin-bottom:5px}
+.sf{margin-bottom:7px}
+.sf label{font-size:10px;color:var(--muted);display:block;margin-bottom:3px;font-weight:500}
+.sf textarea{width:100%;background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 9px;font-size:12px;font-family:inherit;resize:none;outline:none;transition:var(--tr);line-height:1.5}
+.sf textarea:focus{border-color:var(--accent)}
+.sa{display:flex;gap:5px;align-items:center;margin-top:6px}
+.sb{padding:3px 9px;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:var(--tr)}
+.sb.pass{background:rgba(34,197,94,.15);color:var(--pass)}
+.sb.fail{background:rgba(239,68,68,.15);color:var(--fail)}
+.sb.blk{background:rgba(245,158,11,.15);color:var(--blocked)}
+.sb.skip{background:rgba(168,85,247,.15);color:var(--skip)}
+.sb:hover{filter:brightness(1.2)}
+.sd{width:7px;height:7px;border-radius:50%;margin-left:auto}
+.asb{display:flex;align-items:center;gap:5px;padding:7px 12px;background:transparent;border:1px dashed var(--border);color:var(--muted);border-radius:var(--rad);font-size:12px;cursor:pointer;font-family:inherit;transition:var(--tr);width:100%;justify-content:center;margin-bottom:18px}
+.asb:hover{border-color:var(--accent);color:var(--accent)}
+.ab{display:flex;gap:7px;margin-bottom:16px;flex-wrap:wrap}
+.btn{padding:7px 13px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:var(--tr);display:flex;align-items:center;gap:4px}
+.btn.pass{background:rgba(34,197,94,.15);color:var(--pass)}
+.btn.fail{background:rgba(239,68,68,.15);color:var(--fail)}
+.btn.blk{background:rgba(245,158,11,.15);color:var(--blocked)}
+.btn.skip{background:rgba(168,85,247,.15);color:var(--skip)}
+.btn.rst{background:rgba(255,255,255,.06);color:var(--dim)}
+.btn.del{background:rgba(239,68,68,.1);color:var(--fail);margin-left:auto}
+.btn:hover{filter:brightness(1.2)}
+.tr-row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:9px 14px;margin-bottom:14px}
+.tv{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:1px;flex:1}
+.tbtn{padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:var(--tr)}
+.tbtn.st{background:rgba(34,197,94,.2);color:var(--pass)}.tbtn.sp{background:rgba(239,68,68,.2);color:var(--fail)}.tbtn.rs{background:rgba(255,255,255,.06);color:var(--dim)}.tbtn:hover{filter:brightness(1.2)}
+.emp{padding:32px 16px;text-align:center;color:var(--muted);font-size:12px;line-height:1.8}
+
+/* ── Test Runs ── */
+#view-runs{display:none}
+#view-runs.on{display:flex}
+#run-list-pane{width:290px;display:flex;flex-direction:column;border-right:1px solid var(--border);background:var(--surface)}
+#run-list-head{padding:12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+#run-list-head span{font-size:13px;font-weight:600;flex:1}
+#run-items{flex:1;overflow-y:auto;padding:6px 0}
+.ri{padding:10px 14px;cursor:pointer;border-left:3px solid transparent;transition:var(--tr)}
+.ri:hover{background:rgba(255,255,255,.03)}
+.ri.on{background:rgba(99,102,241,.12);border-left-color:var(--accent)}
+.ri-name{font-size:12px;font-weight:600;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ri-meta{font-size:10px;color:var(--muted)}
+.ri-prog{height:3px;border-radius:2px;background:var(--card2);margin-top:5px;overflow:hidden}
+.ri-pb{height:100%;background:var(--pass);border-radius:2px;transition:width .4s}
+#run-detail-pane{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#run-dp{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--muted)}
+#run-dd{flex:1;overflow-y:auto;padding:20px 24px;display:none}
+.run-hdr{display:flex;align-items:flex-start;gap:14px;margin-bottom:16px}
+.run-hdr-info{flex:1}
+.run-hdr-info h2{font-size:18px;font-weight:700;margin-bottom:4px}
+.run-hdr-meta{font-size:12px;color:var(--muted)}
+.run-stats-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.rst-chip{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
+.run-case-row{background:var(--card);border:1px solid var(--border);border-radius:var(--rad);padding:12px 14px;margin-bottom:8px;transition:var(--tr)}
+.run-case-row:hover{border-color:var(--bh)}
+.rcr-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.rcr-id{font-size:10px;font-weight:700;color:var(--muted)}
+.rcr-sum{font-size:13px;font-weight:500;flex:1}
+.rcr-status{font-size:11px;font-weight:600}
+.rcr-btns{display:flex;gap:6px;flex-wrap:wrap}
+.rcr-fail-info{margin-top:8px;padding:8px 12px;background:rgba(239,68,68,.08);border-radius:6px;font-size:11px;border-left:3px solid var(--fail)}
+.rcr-fail-info .frl{color:var(--fail);font-weight:700;margin-bottom:2px}
+.rcr-fail-info a{color:var(--inprog)}
+.run-complete-banner{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:var(--rad);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--pass)}
+
+/* Modals */
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);z-index:100;display:flex;align-items:center;justify-content:center;animation:fi .18s}
+@keyframes fi{from{opacity:0}to{opacity:1}}
+.mo{background:var(--surface);border:1px solid var(--bh);border-radius:16px;width:660px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:var(--sh);animation:su .18s}
+.mo.sm{width:460px}
+@keyframes su{from{transform:translateY(14px);opacity:0}to{transform:translateY(0);opacity:1}}
+.mh{display:flex;align-items:center;padding:16px 20px 12px;border-bottom:1px solid var(--border)}
+.mh h2{font-size:15px;font-weight:700;flex:1}
+.mc{background:none;border:none;color:var(--muted);font-size:19px;cursor:pointer;padding:2px 6px;border-radius:4px;line-height:1}.mc:hover{color:var(--fail)}
+.mb{flex:1;overflow-y:auto;padding:18px 20px}
+.mf{display:flex;gap:7px;justify-content:flex-end;padding:12px 20px;border-top:1px solid var(--border);align-items:center}
+.fl{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px;display:block;letter-spacing:.4px}
+.fa{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px;font-size:13px;font-family:inherit;resize:vertical;outline:none;transition:var(--tr);line-height:1.6;min-height:100px}
+.fa:focus{border-color:var(--accent)}
+.fi2{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:8px 11px;font-size:13px;font-family:inherit;outline:none;transition:var(--tr)}
+.fi2:focus{border-color:var(--accent)}
+.cb{padding:7px 15px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:var(--tr)}
+.cb.pr{background:var(--accent);color:#fff}.cb.pr:hover{opacity:.88}
+.cb.gh{background:var(--card);color:var(--dim);border:1px solid var(--border)}.cb.gh:hover{color:var(--text)}
+.cb.ok{background:rgba(34,197,94,.2);color:var(--pass)}.cb.ok:hover{background:rgba(34,197,94,.3)}
+.cb.danger{background:rgba(239,68,68,.2);color:var(--fail);border:1px solid rgba(239,68,68,.3)}.cb.danger:hover{background:rgba(239,68,68,.3)}
+.pc{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-top:10px}
+.ps{display:flex;gap:7px;padding:3px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,.04)}
+.ps:last-child{border:none}
+.ps-n{color:var(--muted);font-weight:600;width:18px;flex-shrink:0;font-size:11px}
+.ps-b{flex:1}.ps-d{color:var(--text)}.ps-e{color:var(--dim);font-style:italic;margin-top:1px;font-size:11px}
+.psr{display:flex;align-items:center;gap:7px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.psr input[type=checkbox]{width:14px;height:14px;accent-color:var(--accent);cursor:pointer}
+.tag{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600}
+/* Case selector for new run */
+.case-sel-list{max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.cs-group-head{padding:6px 12px;font-size:10px;font-weight:700;letter-spacing:.5px;color:var(--muted);background:var(--surface);position:sticky;top:0;text-transform:uppercase}
+.cs-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:var(--tr)}
+.cs-item:last-child{border:none}
+.cs-item:hover{background:rgba(255,255,255,.03)}
+.cs-item input{accent-color:var(--accent);cursor:pointer;width:14px;height:14px;flex-shrink:0}
+.cs-item .cs-id{font-size:10px;font-weight:700;color:var(--muted);width:52px;flex-shrink:0}
+.cs-item .cs-sum{font-size:12px;flex:1}
+/* Drop zone */
+.drop-zone{border:2px dashed var(--border);border-radius:12px;padding:28px;text-align:center;cursor:pointer;transition:var(--tr);position:relative}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--accent);background:rgba(99,102,241,.05)}
+.drop-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-zone .dz-ic{font-size:34px;margin-bottom:8px;display:block}
+.drop-zone p{font-size:13px;color:var(--dim)}
+.drop-zone small{font-size:11px;color:var(--muted)}
+.prog-bar-wrap{height:6px;background:var(--card2);border-radius:4px;overflow:hidden;margin-top:10px;display:none}
+.prog-bar-fill{height:100%;background:var(--accent);transition:width .3s;border-radius:4px}
+.proj-item{display:flex;align-items:center;gap:8px;padding:8px 11px;background:var(--card);border-radius:7px;margin-bottom:5px;border:1px solid var(--border)}
+.proj-item .pn{flex:1;font-weight:500;font-size:13px;cursor:pointer}
+.proj-item .pd{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:2px 5px;border-radius:4px}.proj-item .pd:hover{color:var(--fail)}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Header -->
+  <div id="hdr">
+    <span class="logo">🧪 TCM</span>
+    <span class="pl">Project:</span>
+    <select id="proj-sel" onchange="setProject(this.value)"></select>
+    <button class="hbtn" onclick="openProjModal()" title="Manage projects">📁</button>
+    <span class="hsp"></span>
+    <div class="srv-dot" id="srv-dot" style="background:var(--muted)" title="Server connection"></div>
+    <button class="hbtn doc" onclick="openDocModal()">📄 Import Doc</button>
+    <button class="hbtn" onclick="openGenModal()">⚡ Generate</button>
+    <button class="hbtn" onclick="openImportJSON()">↓ Import JSON</button>
+    <button class="hbtn" onclick="exportJSON()">↑ Export JSON</button>
+    <button class="hbtn ac" onclick="createCase()">＋ New Case</button>
+  </div>
+  <!-- Nav tabs -->
+  <div id="nav">
+    <button class="nav-btn on" data-v="dashboard" onclick="switchView('dashboard')">📊 Dashboard</button>
+    <button class="nav-btn" data-v="cases" onclick="switchView('cases')">📋 Test Cases</button>
+    <button class="nav-btn" data-v="runs" onclick="switchView('runs')">🧪 Test Runs</button>
+  </div>
+  <!-- Views -->
+  <div id="views">
+    <!-- Dashboard -->
+    <div id="view-dashboard" class="view on">
+      <div class="db-head">
+        <h2>📊 Dashboard</h2>
+        <select class="db-proj-sel" id="db-proj-sel" onchange="renderDashboard()"></select>
+      </div>
+      <div id="db-content"></div>
+    </div>
+    <!-- Test Cases -->
+    <div id="view-cases" class="view">
+      <div id="sidebar">
+        <div id="sh">
+          <div style="display:flex;gap:7px;align-items:center;margin-bottom:7px">
+            <input type="checkbox" id="sel-all-cb" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" onchange="toggleSelectAll(this.checked)" title="Select all in view">
+            <div class="sw" style="flex:1;margin-bottom:0"><input id="sinp" type="text" placeholder="Search…" oninput="renderList()"></div>
+          </div>
+          <div class="fr" style="margin-bottom:0">
+            <button class="fb on" onclick="setFilter(-1,this)">All</button>
+            <button class="fb" onclick="setFilter(0,this)">Untested</button>
+            <button class="fb" onclick="setFilter(1,this)">In Progress</button>
+            <button class="fb" onclick="setFilter(2,this)">Pass</button>
+            <button class="fb" onclick="setFilter(3,this)">Fail</button>
+            <button class="fb" onclick="setFilter(4,this)">Blocked</button>
+            <button class="fb" onclick="setFilter(5,this)">Skip</button>
+          </div>
+          <div id="bulk-bar" style="display:none;align-items:center;gap:7px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)">
+            <span id="bulk-cnt" style="font-size:11px;color:var(--muted);flex:1"></span>
+            <button class="tbtn sp" style="font-size:11px;padding:3px 10px" onclick="deleteSelectedCases()">🗑 Delete</button>
+          </div>
+        </div>
+        <div id="cl"></div>
+      </div>
+      <div id="detail">
+        <div id="dp"><div class="ic">📋</div><p style="font-size:13px;color:var(--muted)">Select a case or press <b>＋ New Case</b></p></div>
+        <div id="dd"></div>
+      </div>
+    </div>
+    <!-- Test Runs -->
+    <div id="view-runs" class="view">
+      <div id="run-list-pane">
+        <div id="run-list-head">
+          <span>Test Runs</span>
+          <button class="hbtn ac" onclick="openNewRunModal()" style="font-size:11px;padding:4px 10px">＋ New Run</button>
+        </div>
+        <div id="run-items"></div>
+      </div>
+      <div id="run-detail-pane">
+        <div id="run-dp"><div class="ic" style="font-size:44px;opacity:.25">🧪</div><p style="font-size:13px;color:var(--muted)">Select a test run or press <b>＋ New Run</b></p></div>
+        <div id="run-dd"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modals & file inputs -->
+<div id="mbg" class="mbg" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div id="mo" class="mo"></div>
+</div>
+<input type="file" id="json-inp" accept=".json" style="display:none" onchange="handleImportJSON(event)">
+
+<script>
+// ── Constants ──
+const STATUS   = ['Not Run','In Progress','Pass','Fail','Blocked','Skipped'];
+const PRIORITY = ['Low','Medium','High','Critical'];
+const CATEGORY = ['UI','Gameplay','Economy','Audio','Settings','Network','Performance','Analytics','Other'];
+const SC = ['var(--notrun)','var(--inprog)','var(--pass)','var(--fail)','var(--blocked)','var(--skip)'];
+const PC = ['var(--low)','var(--med)','var(--high)','var(--crit)'];
+const IS_SERVER = window.location.protocol !== 'file:';
+
+// ── State ──
+let repo = { projects:[], testCases:[], testRuns:[], runResults:{}, nextId:1, nextRunId:1, autoScannedProjects:[] };
+let activeProject='', selectedId='', selectedRunId='', filterStatus=-1, timers={};
+let selectedCases=new Set();
+let runFilterStatus=-1;
+let generatedCases=[], genSelected=[], _failCb=null;
+
+// ── Server ──
+async function pingServer(){ if(!IS_SERVER)return; try{const r=await fetch('/api/ping');document.getElementById('srv-dot').style.background=r.ok?'var(--pass)':'var(--fail)';}catch{document.getElementById('srv-dot').style.background='var(--fail)';} }
+setInterval(pingServer,15000); pingServer();
+
+// ── Storage ──
+let _st; function save(){clearTimeout(_st);_st=setTimeout(doSave,300);}
+async function doSave(){
+  if(IS_SERVER){try{await fetch('/api/repo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(repo)});}catch(e){console.warn(e);}}
+  localStorage.setItem('tcm_repo',JSON.stringify(repo));
+}
+async function load(){
+  let data;
+  if(IS_SERVER){try{const r=await fetch('/api/repo');if(r.ok)data=await r.json();}catch{}}
+  if(!data){const d=localStorage.getItem('tcm_repo');if(d)try{data=JSON.parse(d);}catch{}}
+  if(data){
+    repo=data;
+    if(!repo.projects)repo.projects=[];
+    if(!repo.testCases)repo.testCases=[];
+    if(!repo.testRuns)repo.testRuns=[];
+    if(!repo.runResults)repo.runResults={};
+    if(!repo.nextId)repo.nextId=1;
+    if(!repo.nextRunId)repo.nextRunId=1;
+    if(!repo.autoScannedProjects)repo.autoScannedProjects=[];
+  }
+  if(repo.projects.length>0)activeProject=repo.projects[0];
+}
+
+// ── Navigation ──
+function switchView(v){
+  document.querySelectorAll('.view').forEach(el=>{el.classList.remove('on');});
+  document.getElementById('view-'+v).classList.add('on');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('on'));
+  document.querySelector(`.nav-btn[data-v="${v}"]`).classList.add('on');
+  if(v==='dashboard')renderDashboard();
+  if(v==='cases'){renderAll();}
+  if(v==='runs')renderRuns();
+}
+
+// ── Projects ──
+function setProject(p){activeProject=p;selectedId='';selectedRunId='';renderAll();renderRuns();renderDashboard();}
+function renderProjSel(){
+  const s=document.getElementById('proj-sel'),d=document.getElementById('db-proj-sel');
+  const opts=repo.projects.length===0?'<option value="">— No projects —</option>':repo.projects.map(p=>`<option value="${esc(p)}"${p===activeProject?' selected':''}>${esc(p)}</option>`).join('');
+  s.innerHTML=opts;if(d)d.innerHTML=opts;
+}
+function openProjModal(){
+  showModal(`<div class="mh"><h2>📁 Projects</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <span class="fl">NEW PROJECT</span>
+    <div style="display:flex;gap:8px;margin-bottom:14px"><input id="npi" class="fi2" type="text" placeholder="e.g. Solitaire v2.0" onkeydown="if(event.key==='Enter')addProject()"><button class="cb pr" onclick="addProject()">Add</button></div>
+    <span class="fl">EXISTING PROJECTS</span>
+    <div id="pitems">${renderProjItems()}</div>
+  </div>`,true);
+}
+function renderProjItems(){return repo.projects.length===0?'<p style="color:var(--muted);font-size:12px;padding:8px 0">No projects yet.</p>':repo.projects.map(p=>`<div class="proj-item"><span class="pn" onclick="setProject('${esc(p)}');closeModal()">${esc(p)}</span><button class="pd" onclick="deleteProject('${esc(p)}')">🗑</button></div>`).join('');}
+function addProject(){const v=document.getElementById('npi').value.trim();if(!v||repo.projects.includes(v))return;repo.projects.push(v);activeProject=v;save();renderAll();renderRuns();renderDashboard();document.getElementById('pitems').innerHTML=renderProjItems();document.getElementById('npi').value='';}
+function deleteProject(p){if(!confirm(`Delete project "${p}" and ALL its data?`))return;repo.projects=repo.projects.filter(x=>x!==p);repo.testCases=repo.testCases.filter(tc=>tc.project!==p);repo.testRuns=repo.testRuns.filter(r=>r.project!==p);if(activeProject===p)activeProject=repo.projects[0]||'';save();renderAll();renderRuns();renderDashboard();document.getElementById('pitems').innerHTML=renderProjItems();}
+
+// ── Dashboard ──
+function renderDashboard(){
+  const projSel=document.getElementById('db-proj-sel');
+  if(projSel)projSel.innerHTML=repo.projects.length===0?'<option value="">— No projects —</option>':repo.projects.map(p=>`<option value="${esc(p)}"${p===activeProject?' selected':''}>${esc(p)}</option>`).join('');
+  const proj=projSel?projSel.value:activeProject;
+  const cont=document.getElementById('db-content');if(!cont)return;
+  if(!proj){cont.innerHTML='<p style="color:var(--muted);font-size:13px">Create a project to see stats here.</p>';return;}
+  const s=getProjStats(proj);
+  const passRate=s.total>0?Math.round(s.pass/s.total*100):0;
+  const pw=s.total>0?Math.round(s.pass/s.total*100):0,fw=s.total>0?Math.round(s.fail/s.total*100):0,bw=s.total>0?Math.round(s.blocked/s.total*100):0,sw=s.total>0?Math.round(s.skip/s.total*100):0,nw=Math.max(0,100-pw-fw-bw-sw);
+  const recentRuns=repo.testRuns.filter(r=>r.project===proj).slice(-8).reverse();
+  cont.innerHTML=`
+    <div class="db-grid">
+      <div class="db-stat-card"><div class="val">${s.total}</div><div class="lbl">TOTAL CASES</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--pass)">${passRate}%</div><div class="lbl">PASS RATE</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--inprog)">${s.runs}</div><div class="lbl">TEST RUNS</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--pass)">${s.completedRuns}</div><div class="lbl">RUNS COMPLETED</div></div>
+    </div>
+    <div class="db-sec-title">Status Breakdown — ${esc(proj)}</div>
+    <div class="stack-bar">
+      <div class="stack-seg" style="width:${pw}%;background:var(--pass)"></div>
+      <div class="stack-seg" style="width:${fw}%;background:var(--fail)"></div>
+      <div class="stack-seg" style="width:${bw}%;background:var(--blocked)"></div>
+      <div class="stack-seg" style="width:${sw}%;background:var(--skip)"></div>
+      <div class="stack-seg" style="width:${nw}%;background:var(--notrun);opacity:.4"></div>
+    </div>
+    <div class="stack-legend">
+      <span class="ll"><span class="ld" style="background:var(--pass)"></span>Pass: ${s.pass}</span>
+      <span class="ll"><span class="ld" style="background:var(--fail)"></span>Fail: ${s.fail}</span>
+      <span class="ll"><span class="ld" style="background:var(--blocked)"></span>Blocked: ${s.blocked}</span>
+      <span class="ll"><span class="ld" style="background:var(--skip)"></span>Skipped: ${s.skip}</span>
+      <span class="ll"><span class="ld" style="background:var(--notrun)"></span>Untested: ${s.notrun}</span>
+    </div>
+    <div class="db-sec-title" style="margin-top:8px">Recent Test Runs</div>
+    ${recentRuns.length===0?'<p style="color:var(--muted);font-size:12px">No test runs yet. Go to <b>🧪 Test Runs</b> to create one.</p>':recentRuns.map(r=>{const rs=getRunStats(r.id);const complete=isRunComplete(r.id);const pct=rs.total>0?Math.round((rs.pass+rs.fail+rs.blocked+rs.skip)/rs.total*100):0;return`<div class="run-row" onclick="switchView('runs');selectRun('${r.id}')">
+      <div style="flex:1"><div class="rr-name">${esc(r.name)}</div><div class="rr-meta">v${esc(r.version)} · ${esc(r.date)} · ${rs.total} cases</div></div>
+      <div style="font-size:11px;display:flex;gap:6px;align-items:center">
+        <span style="color:var(--pass)">✅${rs.pass}</span><span style="color:var(--fail)">❌${rs.fail}</span><span style="color:var(--blocked)">🟠${rs.blocked}</span><span style="color:var(--skip)">⏭${rs.skip}</span>
+      </div>
+      <span class="run-badge" style="${complete?'background:rgba(34,197,94,.15);color:var(--pass)':'background:rgba(99,102,241,.15);color:var(--accent)'}">${complete?'Done':pct+'%'}</span>
+    </div>`;}).join('')}`;
+}
+function getProjStats(proj){
+  const cases=repo.testCases.filter(tc=>tc.project===proj);
+  let pass=0,fail=0,blocked=0,skip=0,notrun=0,inprog=0;
+  for(const tc of cases){if(tc.status===2)pass++;else if(tc.status===3)fail++;else if(tc.status===4)blocked++;else if(tc.status===5)skip++;else if(tc.status===1)inprog++;else notrun++;}
+  const runs=repo.testRuns.filter(r=>r.project===proj);
+  const completedRuns=runs.filter(r=>isRunComplete(r.id)).length;
+  return{total:cases.length,pass,fail,blocked,skip,notrun,inprog,runs:runs.length,completedRuns};
+}
+
+// ── Test Cases List ──
+function filteredCases(){const q=document.getElementById('sinp').value.toLowerCase();return repo.testCases.filter(tc=>tc.project===activeProject&&(filterStatus<0||tc.status===filterStatus)&&(!q||tc.id.toLowerCase().includes(q)||tc.summary.toLowerCase().includes(q)));}
+function setFilter(f,btn){filterStatus=+f;document.querySelectorAll('.fb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderList();}
+function renderList(){
+  const el=document.getElementById('cl'),cases=filteredCases();
+  const selAllCb=document.getElementById('sel-all-cb');
+  if(selAllCb)selAllCb.checked=cases.length>0&&cases.every(tc=>selectedCases.has(tc.id));
+  updateBulkBar();
+  if(!cases.length){el.innerHTML=`<div class="emp">No cases found.<br>Press <b>＋ New Case</b> or <b>⚡ Generate</b>.</div>`;return;}
+  el.innerHTML=cases.map(tc=>`<div class="ci${tc.id===selectedId?' on':''}" onclick="selectCase('${tc.id}')">
+    <input type="checkbox" class="case-cb" style="accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex-shrink:0" ${selectedCases.has(tc.id)?'checked':''} onclick="event.stopPropagation();toggleCaseSel('${tc.id}')">
+    <div class="cd" style="background:${SC[tc.status]}"></div>
+    <div class="cf">
+      <div class="ci-id">${esc(tc.id)} <span style="color:${PC[tc.priority]}">${['⚪','🔵','🟠','🔴'][tc.priority]}</span></div>
+      <div class="ci-s">${esc(tc.summary)}</div>
+      <div class="ci-m">${CATEGORY[tc.category]||'Other'} · ${tc.steps.length} steps · ${fmtD(getElapsed(tc.id))}</div>
+    </div>
+  </div>`).join('');
+}
+function toggleCaseSel(id){if(selectedCases.has(id))selectedCases.delete(id);else selectedCases.add(id);renderList();}
+function toggleSelectAll(chk){
+  const cases=filteredCases();
+  if(chk)cases.forEach(tc=>selectedCases.add(tc.id));else cases.forEach(tc=>selectedCases.delete(tc.id));
+  renderList();
+}
+function updateBulkBar(){
+  const bb=document.getElementById('bulk-bar');if(!bb)return;
+  if(selectedCases.size>0){bb.style.display='flex';document.getElementById('bulk-cnt').textContent=`${selectedCases.size} selected`;}
+  else bb.style.display='none';
+}
+function deleteSelectedCases(){
+  if(!selectedCases.size)return;
+  if(!confirm('Delete '+selectedCases.size+' selected test cases?'))return;
+  repo.testCases=repo.testCases.filter(x=>!selectedCases.has(x.id));
+  selectedCases.clear();
+  if(!repo.testCases.find(x=>x.id===selectedId))selectedId='';
+  save();renderAll();renderDashboard();
+}
+
+// ── Test Case Detail ──
+function selectCase(id){selectedId=id;renderList();renderDetail();}
+function renderDetail(){
+  const ph=document.getElementById('dp'),det=document.getElementById('dd');
+  const tc=repo.testCases.find(x=>x.id===selectedId);
+  if(!tc){ph.style.display='flex';det.style.display='none';return;}
+  ph.style.display='none';det.style.display='block';
+  const running=timers[tc.id]?.running;
+  const hasFail=tc.status===3&&tc.failReason;
+  det.innerHTML=`
+    <div class="dh"><textarea id="sa" rows="1" oninput="ag(this);uf('${tc.id}','summary',this.value)" onfocus="ag(this)">${esc(tc.summary)}</textarea></div>
+    <div class="dm">
+      <select class="cs" onchange="uf('${tc.id}','priority',+this.value)">${PRIORITY.map((p,i)=>`<option value="${i}"${tc.priority===i?' selected':''}>${p}</option>`).join('')}</select>
+      <select class="cs" onchange="uf('${tc.id}','category',+this.value)">${CATEGORY.map((c,i)=>`<option value="${i}"${tc.category===i?' selected':''}>${c}</option>`).join('')}</select>
+      <span class="sc" style="background:${SC[tc.status]}22;color:${SC[tc.status]}">${STATUS[tc.status]}</span>
+      ${tc.lastRunAt?`<span style="font-size:10px;color:var(--muted)">Last: ${tc.lastRunAt}</span>`:''}
+    </div>
+    ${hasFail?`<div class="fail-info"><div class="fr-lbl">FAILURE DETAILS</div><div style="margin-bottom:3px">${esc(tc.failReason)}</div>${tc.bugLink?`<a href="${esc(tc.bugLink)}" target="_blank">🔗 ${esc(tc.bugLink)}</a>`:''}</div>`:''}
+    <div class="ab" style="justify-content:flex-end">
+      <button class="btn del" onclick="deleteCase('${tc.id}')">🗑 Delete Case</button>
+    </div>
+    <div class="sl">Steps (${tc.steps.length})</div>
+    ${tc.steps.map((s,i)=>renderStep(tc.id,s,i)).join('')}
+    <button class="asb" onclick="addStep('${tc.id}')">＋ Add Step</button>
+    <div style="height:40px"></div>`;
+  setTimeout(()=>{const a=document.getElementById('sa');if(a)ag(a);},10);
+}
+function renderStep(tcId,s,i){
+  return`<div class="sk">
+    <div class="sn">STEP ${s.order}</div>
+    <div class="sf"><label>Action / Description</label><textarea rows="2" oninput="us('${tcId}',${i},'description',this.value)">${esc(s.description)}</textarea></div>
+    <div class="sf"><label>Expected Result</label><textarea rows="2" oninput="us('${tcId}',${i},'expectedResult',this.value)">${esc(s.expectedResult)}</textarea></div>
+    <div class="sf"><label>Actual Result</label><textarea rows="1" oninput="us('${tcId}',${i},'actualResult',this.value)">${esc(s.actualResult||'')}</textarea></div>
+    <div class="sa" style="justify-content:flex-end">
+      <button class="sb" onclick="removeStep('${tcId}',${i})" style="background:rgba(239,68,68,.1);color:var(--fail)">✕ Remove Step</button>
+    </div>
+  </div>`;
+}
+
+// ── CRUD ──
+function createCase(){
+  if(!activeProject){alert('Please create a project first.');openProjModal();return;}
+  const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:0,status:0,failReason:'',bugLink:'',
+    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0};
+  repo.testCases.push(tc);save();renderAll();selectCase(tc.id);switchView('cases');
+}
+function deleteCase(id){if(!confirm('Delete this test case?'))return;repo.testCases=repo.testCases.filter(x=>x.id!==id);selectedId='';save();renderAll();}
+function addStep(tcId){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.push({order:tc.steps.length+1,description:'',expectedResult:'',actualResult:'',status:0});save();renderDetail();}
+function removeStep(tcId,i){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.splice(i,1);tc.steps.forEach((s,j)=>s.order=j+1);save();renderDetail();}
+function uf(tcId,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc[field]=typeof tc[field]==='number'?+val:val;save();renderList();}
+function us(tcId,i,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps[i][field]=val;save();}
+function markCase(tcId,status){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=status;tc.lastRunAt=now();if(status!==3){tc.failReason='';tc.bugLink='';}save();renderAll();selectCase(tcId);}
+function markCaseWithFail(tcId,reason,bugLink){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=3;tc.failReason=reason;tc.bugLink=bugLink;tc.lastRunAt=now();save();renderAll();selectCase(tcId);}
+function markStep(tcId,i,status){
+  const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps[i].status=status;
+  const ss=tc.steps.map(s=>s.status);
+  if(ss.every(s=>s===2))tc.status=2;else if(ss.some(s=>s===3))tc.status=3;else if(ss.some(s=>s===4))tc.status=4;else if(ss.some(s=>s===5&&!ss.some(x=>x===3||x===4)))tc.status=5;else if(ss.some(s=>s>0))tc.status=1;
+  tc.lastRunAt=now();save();renderDetail();renderList();
+}
+
+// ── Fail Dialog ──
+function askFail(cb){
+  _failCb=cb;
+  showModal(`<div class="mh"><h2>❌ Mark as Failed</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <span class="fl">REASON FOR FAILURE *</span>
+    <textarea class="fa" id="fr" style="min-height:70px;font-size:13px" placeholder="Describe what went wrong…"></textarea>
+    <span class="fl" style="margin-top:12px">BUG / TICKET LINK (optional)</span>
+    <input class="fi2" id="fb" type="text" placeholder="https://jira.company.com/browse/BUG-123">
+  </div>
+  <div class="mf">
+    <button class="cb gh" onclick="closeModal()">Cancel</button>
+    <button class="cb danger" onclick="doFail()">❌ Confirm Fail</button>
+  </div>`,true);
+}
+function doFail(){
+  const r=document.getElementById('fr').value.trim();
+  if(!r){document.getElementById('fr').style.borderColor='var(--fail)';document.getElementById('fr').focus();return;}
+  const b=document.getElementById('fb').value.trim();
+  closeModal();
+  if(_failCb){_failCb(r,b);_failCb=null;}
+}
+
+// ── Timer ──
+function getElapsed(id){const t=timers[id],tc=repo.testCases.find(x=>x.id===id),base=tc?tc.durationSeconds:0;if(!t)return base;return t.running?(Date.now()-t.start)/1000+t.elapsed:t.elapsed;}
+function startTimer(id){const tc=repo.testCases.find(x=>x.id===id);if(!tc)return;const base=timers[id]?timers[id].elapsed:tc.durationSeconds;timers[id]={start:Date.now(),elapsed:base,running:true};tc.status=Math.max(tc.status,1);save();renderDetail();renderList();}
+function stopTimer(id){const t=timers[id];if(!t||!t.running)return;t.elapsed=getElapsed(id);t.running=false;const tc=repo.testCases.find(x=>x.id===id);if(tc){tc.durationSeconds=t.elapsed;save();}renderDetail();renderList();}
+function resetTimer(id){timers[id]={start:0,elapsed:0,running:false};const tc=repo.testCases.find(x=>x.id===id);if(tc){tc.durationSeconds=0;save();}renderDetail();renderList();}
+setInterval(()=>{for(const id in timers){if(!timers[id].running)continue;const el=document.getElementById('tv-'+id);if(el)el.textContent=fmtD(getElapsed(id));}},500);
+
+// ── Test Runs ──
+function getRunStats(runId){
+  const run=repo.testRuns.find(r=>r.id===runId);if(!run)return{total:0,pass:0,fail:0,blocked:0,skip:0,notrun:0};
+  const res=repo.runResults[runId]||{};let pass=0,fail=0,blocked=0,skip=0,notrun=0;
+  for(const cid of run.caseIds){const r=res[cid];if(!r||r.status===0)notrun++;else if(r.status===2)pass++;else if(r.status===3)fail++;else if(r.status===4)blocked++;else if(r.status===5)skip++;}
+  return{total:run.caseIds.length,pass,fail,blocked,skip,notrun};
+}
+function isRunComplete(runId){const s=getRunStats(runId);return s.total>0&&s.notrun===0;}
+function renderRuns(){
+  const el=document.getElementById('run-items');
+  const runs=repo.testRuns.filter(r=>r.project===activeProject).slice().reverse();
+  if(!runs.length){el.innerHTML='<div class="emp">No test runs yet.<br>Press <b>＋ New Run</b> to create one.</div>';return;}
+  el.innerHTML=runs.map(r=>{const s=getRunStats(r.id);const done=isRunComplete(r.id);const pct=s.total>0?Math.round((s.pass+s.fail+s.blocked+s.skip)/s.total*100):0;
+    return`<div class="ri${r.id===selectedRunId?' on':''}" onclick="selectRun('${r.id}')">
+      <div class="ri-name">${esc(r.name)}</div>
+      <div class="ri-meta">v${esc(r.version)} · ${esc(r.date)} · ${s.total} cases${done?' · ✅ Done':' · '+pct+'%'}</div>
+      <div class="ri-prog"><div class="ri-pb" style="width:${pct}%;background:${s.fail>0?'var(--fail)':'var(--pass)'}"></div></div>
+    </div>`;}).join('');
+}
+function selectRun(id){selectedRunId=id;runFilterStatus=-1;renderRuns();renderRunDetail();}
+function setRunFilter(f,btn){runFilterStatus=+f;document.querySelectorAll('.rfb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');renderRunDetail();}
+function renderRunDetail(){
+  const ph=document.getElementById('run-dp'),det=document.getElementById('run-dd');
+  const run=repo.testRuns.find(x=>x.id===selectedRunId);
+  if(!run){ph.style.display='flex';det.style.display='none';return;}
+  ph.style.display='none';det.style.display='block';
+  const s=getRunStats(run.id);const done=isRunComplete(run.id);
+  const pct=s.total>0?Math.round((s.pass+s.fail+s.blocked+s.skip)/s.total*100):0;
+  const res=repo.runResults[run.id]||{};
+  const cases=run.caseIds.map(id=>repo.testCases.find(tc=>tc.id===id)).filter(Boolean);
+  det.innerHTML=`
+    ${done?`<div class="run-complete-banner">✅ Test run complete! All ${s.total} cases have been executed.</div>`:''}
+    <div class="run-hdr">
+      <div style="flex:1">
+        <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">${esc(run.name)}</h2>
+        <div class="run-hdr-meta">Version: <b>${esc(run.version)}</b> · Date: <b>${esc(run.date)}</b> · Tester: <b>${esc(run.testerName||'Unassigned')}</b> · Project: <b>${esc(run.project)}</b></div>
+        <div style="margin-top:6px"><button class="tbtn rs" style="padding:4px 10px;font-size:11px" onclick="navigator.clipboard.writeText(window.location.origin+window.location.pathname+'?run='+encodeURIComponent('${run.id}'));alert('Link copied to clipboard!')">🔗 Copy Link to Run</button></div>
+      </div>
+      <div style="text-align:center">
+        <svg viewBox="0 0 36 36" width="64" height="64">
+          <circle cx="18" cy="18" r="14" fill="none" stroke="var(--card2)" stroke-width="3.5"/>
+          <circle cx="18" cy="18" r="14" fill="none" stroke="${s.fail>0?'var(--fail)':'var(--pass)'}" stroke-width="3.5"
+            stroke-dasharray="${pct} ${100-pct}" stroke-dashoffset="25" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+        </svg>
+        <div style="font-size:13px;font-weight:700;margin-top:-4px">${pct}%</div>
+      </div>
+    </div>
+    <div class="run-stats-row">
+      <span class="rst-chip" style="background:rgba(34,197,94,.1);color:var(--pass)">✅ Pass: ${s.pass}</span>
+      <span class="rst-chip" style="background:rgba(239,68,68,.1);color:var(--fail)">❌ Fail: ${s.fail}</span>
+      <span class="rst-chip" style="background:rgba(245,158,11,.1);color:var(--blocked)">🟠 Blocked: ${s.blocked}</span>
+      <span class="rst-chip" style="background:rgba(168,85,247,.1);color:var(--skip)">⏭ Skipped: ${s.skip}</span>
+      <span class="rst-chip" style="background:rgba(255,255,255,.06);color:var(--muted)">○ Untested: ${s.notrun}</span>
+      <button class="btn del" style="margin-left:auto;padding:5px 12px;font-size:11px" onclick="deleteRun('${run.id}')">🗑 Delete Run</button>
+    </div>
+    <div style="display:flex;align-items:center;margin-top:16px;margin-bottom:12px">
+      <div class="sl" style="margin:0;flex:1">Test Cases (${cases.length})</div>
+      <div class="fr">
+        <button class="fb rfb ${runFilterStatus===-1?'on':''}" onclick="setRunFilter(-1,this)">All</button>
+        <button class="fb rfb ${runFilterStatus===0?'on':''}" onclick="setRunFilter(0,this)">Untested</button>
+        <button class="fb rfb ${runFilterStatus===2?'on':''}" onclick="setRunFilter(2,this)">Pass</button>
+        <button class="fb rfb ${runFilterStatus===3?'on':''}" onclick="setRunFilter(3,this)">Fail</button>
+        <button class="fb rfb ${runFilterStatus===4?'on':''}" onclick="setRunFilter(4,this)">Blocked</button>
+        <button class="fb rfb ${runFilterStatus===5?'on':''}" onclick="setRunFilter(5,this)">Skip</button>
+      </div>
+    </div>
+    ${cases.filter(tc=>{if(runFilterStatus===-1)return true;const r=res[tc.id];const st=r?r.status:0;return st===runFilterStatus;}).map(tc=>{const r=res[tc.id];const st=r?r.status:0;
+      return`<div class="run-case-row">
+        <div class="rcr-top">
+          <div class="cd" style="background:${SC[st]};width:10px;height:10px;border-radius:50%;flex-shrink:0"></div>
+          <span class="rcr-id">${esc(tc.id)}</span>
+          <span class="rcr-sum">${esc(tc.summary)}</span>
+          <span class="rcr-status" style="color:${SC[st]}">${STATUS[st]}</span>
+        </div>
+        <div class="rcr-steps" style="margin-bottom:12px;padding:8px;background:rgba(0,0,0,.15);border-radius:6px">
+          ${tc.steps.map((s, idx) => `<div style="font-size:11px;margin-bottom:6px"><b style="color:var(--muted)">${idx+1}.</b> ${esc(s.description)} <span style="color:var(--dim)">→</span> <span style="color:var(--pass)">${esc(s.expectedResult)}</span></div>`).join('')}
+        </div>
+        <div class="rcr-btns">
+          <button class="sb pass" onclick="markRunCase('${run.id}','${tc.id}',2)">✅ Pass</button>
+          <button class="sb fail" onclick="askFail(function(r,b){markRunCaseWithFail('${run.id}','${tc.id}',r,b);})">❌ Fail</button>
+          <button class="sb blk"  onclick="markRunCase('${run.id}','${tc.id}',4)">🟠 Blocked</button>
+          <button class="sb skip" onclick="markRunCase('${run.id}','${tc.id}',5)">⏭ Skip</button>
+          ${st?`<button class="sb" onclick="markRunCase('${run.id}','${tc.id}',0)" style="background:rgba(255,255,255,.06);color:var(--dim)">↺ Reset</button>`:''}
+        </div>
+        ${r&&r.status===3&&r.failReason?`<div class="rcr-fail-info"><div class="frl">FAILURE REASON</div><div>${esc(r.failReason)}</div>${r.bugLink?`<a href="${esc(r.bugLink)}" target="_blank">🔗 ${esc(r.bugLink)}</a>`:''}</div>`:''}
+      </div>`;}).join('')}
+    <div style="height:40px"></div>`;
+}
+function markRunCase(runId,caseId,status){
+  if(!repo.runResults[runId])repo.runResults[runId]={};
+  repo.runResults[runId][caseId]={status,failReason:'',bugLink:''};
+  save();renderRunDetail();renderRuns();
+  if(document.getElementById('view-dashboard').classList.contains('on'))renderDashboard();
+}
+function markRunCaseWithFail(runId,caseId,reason,bugLink){
+  if(!repo.runResults[runId])repo.runResults[runId]={};
+  repo.runResults[runId][caseId]={status:3,failReason:reason,bugLink:bugLink};
+  save();renderRunDetail();renderRuns();
+}
+function deleteRun(runId){
+  if(!confirm('Delete this test run and all its results?'))return;
+  repo.testRuns=repo.testRuns.filter(r=>r.id!==runId);
+  delete repo.runResults[runId];
+  selectedRunId='';save();renderRuns();renderRunDetail();renderDashboard();
+}
+
+// ── New Run Modal ──
+function openNewRunModal(){
+  if(!activeProject){alert('Create a project first.');return;}
+  const cases=repo.testCases.filter(tc=>tc.project===activeProject);
+  if(!cases.length){alert('Add some test cases to this project first.');return;}
+  const byCategory={};
+  for(const tc of cases){const c=CATEGORY[tc.category]||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
+  const caseListHtml=Object.entries(byCategory).map(([cat,tcs])=>`
+    <div class="cs-group-head">${esc(cat)}</div>
+    ${tcs.map(tc=>`<div class="cs-item">
+      <input type="checkbox" class="run-case-cb" id="rcb-${tc.id}" value="${tc.id}" checked>
+      <span class="cs-id">${esc(tc.id)}</span>
+      <label class="cs-sum" for="rcb-${tc.id}">${esc(tc.summary)}</label>
+    </div>`).join('')}`).join('');
+  const today=new Date().toISOString().slice(0,10);
+  showModal(`<div class="mh"><h2>🧪 New Test Run</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+      <div><span class="fl">RUN NAME *</span><input id="rn-name" class="fi2" type="text" placeholder="e.g. Sprint 9 Smoke Test"></div>
+      <div><span class="fl">VERSION *</span><input id="rn-ver" class="fi2" type="text" placeholder="e.g. 1.5.0"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div><span class="fl">TESTER NAME</span><input id="rn-tester" class="fi2" type="text" placeholder="e.g. Jane Doe"></div>
+      <div><span class="fl">DATE</span><input id="rn-date" class="fi2" type="date" value="${today}"></div>
+    </div>
+    <span class="fl">SELECT TEST CASES <span id="rn-count" style="color:var(--accent)">(${cases.length} selected)</span></span>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input class="fi2" style="flex:1" type="text" placeholder="Filter cases…" oninput="filterRunCases(this.value)">
+      <button class="cb gh" onclick="selectAllRunCases(true)">All</button>
+      <button class="cb gh" onclick="selectAllRunCases(false)">None</button>
+    </div>
+    <div class="case-sel-list" id="rn-case-list">${caseListHtml}</div>
+  </div>
+  <div class="mf">
+    <button class="cb gh" onclick="closeModal()">Cancel</button>
+    <button class="cb pr" onclick="createRun()">✅ Create Test Run</button>
+  </div>`);
+  document.querySelectorAll('.run-case-cb').forEach(cb=>cb.addEventListener('change',updateRunCount));
+}
+function updateRunCount(){const c=document.querySelectorAll('.run-case-cb:checked').length;const el=document.getElementById('rn-count');if(el)el.textContent=`(${c} selected)`;}
+function selectAllRunCases(sel){document.querySelectorAll('.run-case-cb').forEach(cb=>cb.checked=sel);updateRunCount();}
+function filterRunCases(q){const lo=q.toLowerCase();document.querySelectorAll('.cs-item').forEach(item=>{const id=item.querySelector('.cs-id')?.textContent||'';const sum=item.querySelector('.cs-sum')?.textContent||'';item.style.display=(id+sum).toLowerCase().includes(lo)?'':'none';});}
+function createRun(){
+  const name=document.getElementById('rn-name').value.trim();
+  const ver=document.getElementById('rn-ver').value.trim();
+  const date=document.getElementById('rn-date').value;
+  const tester=document.getElementById('rn-tester').value.trim();
+  if(!name||!ver){alert('Please fill in the Run Name and Version.');return;}
+  const caseIds=[...document.querySelectorAll('.run-case-cb:checked')].map(cb=>cb.value);
+  if(!caseIds.length){alert('Select at least one test case.');return;}
+  const run={id:`RUN-${String(repo.nextRunId++).padStart(3,'0')}`,name,version:ver,testerName:tester,date,project:activeProject,caseIds,createdAt:now()};
+  repo.testRuns.push(run);
+  repo.runResults[run.id]={};
+  save();closeModal();renderRuns();selectRun(run.id);switchView('runs');renderDashboard();
+}
+
+// ── Generate / Doc Import ──
+function openGenModal(pre=''){
+  if(!activeProject){alert('Create a project first.');return;}
+  generatedCases=[];genSelected=[];
+  showModal(`<div class="mh"><h2>⚡ Generate Test Cases</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <span class="fl">PASTE REQUIREMENTS, SCENARIOS OR PLAIN TEXT</span>
+    <textarea class="fa" id="gt" style="min-height:130px" placeholder="Plain text, numbered list, user stories, or Gherkin…">${esc(pre)}</textarea>
+    <p style="font-size:11px;color:var(--muted);margin-top:5px">Supports: plain text · numbered lists · As a / I want · Gherkin (Scenario/Given/When/Then)</p>
+    <div id="gp"></div>
+  </div>
+  <div class="mf"><button class="cb gh" onclick="closeModal()">Cancel</button><button class="cb pr" onclick="runGenerate()">⚡ Generate</button></div>`);
+  if(pre)setTimeout(runGenerate,100);
+}
+function runGenerate(){
+  const text=document.getElementById('gt').value.trim();if(!text)return;
+  generatedCases=new TCMGenerator().generate(text);genSelected=generatedCases.map((_,i)=>i);
+  const gp=document.getElementById('gp');
+  if(!generatedCases.length){gp.innerHTML='<p style="color:var(--muted);font-size:12px;padding:10px 0">Nothing extracted. Try adding more detail.</p>';return;}
+  gp.innerHTML=generatedCases.map((tc,i)=>`<div class="pc">
+    <div class="psr"><input type="checkbox" id="gc${i}" checked onchange="tgGen(${i})"><label for="gc${i}" style="font-size:12px;font-weight:600;cursor:pointer;flex:1">${esc(tc.summary)}</label>
+    <span class="tag" style="background:${PC[tc.priority||1]}22;color:${PC[tc.priority||1]}">${PRIORITY[tc.priority||1]}</span></div>
+    <div style="margin-top:7px">${tc.steps.map((s,j)=>`<div class="ps"><span class="ps-n">${j+1}</span><div class="ps-b"><div class="ps-d">${esc(s.description)}</div><div class="ps-e">→ ${esc(s.expectedResult)}</div></div></div>`).join('')}</div>
+  </div>`).join('');
+  document.querySelector('.mf').innerHTML=`<button class="cb gh" onclick="closeModal()">Cancel</button><span style="font-size:12px;color:var(--muted);flex:1">${generatedCases.length} case(s)</span><button class="cb ok" id="addbtn" onclick="addGenCases()">✅ Add (${genSelected.length})</button>`;
+}
+function tgGen(i){if(genSelected.includes(i))genSelected=genSelected.filter(x=>x!==i);else genSelected.push(i);const b=document.getElementById('addbtn');if(b)b.textContent=`✅ Add (${genSelected.length})`;}
+function addGenCases(){
+  let firstId='';
+  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||0,status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0};repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
+  save();closeModal();renderAll();if(firstId)selectCase(firstId);
+}
+function openDocModal(){
+  if(!activeProject){alert('Create a project first.');return;}
+  showModal(`<div class="mh"><h2>📄 Import Document</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <p style="font-size:12px;color:var(--dim);margin-bottom:14px">Upload a <b>.docx</b>, <b>.pdf</b>, <b>.txt</b>, or <b>.md</b> file. Text will be extracted and loaded into the generator.</p>
+    <div class="drop-zone" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleDrop(event)">
+      <input type="file" accept=".docx,.pdf,.txt,.md,.csv" onchange="handleDocFile(event)">
+      <span class="dz-ic">📂</span><p>Drag & drop a file, or click to browse</p><small>.docx · .pdf · .txt · .md · .csv</small>
+    </div>
+    <div class="prog-bar-wrap" id="dprog"><div class="prog-bar-fill" id="dpb" style="width:0%"></div></div>
+    <div id="doc-status" style="font-size:12px;color:var(--muted);margin-top:8px;min-height:18px"></div>
+  </div>
+  <div class="mf"><button class="cb gh" onclick="closeModal()">Cancel</button></div>`);
+}
+function handleDrop(e){e.preventDefault();e.currentTarget.classList.remove('drag');const f=e.dataTransfer.files[0];if(f)processDocFile(f);}
+function handleDocFile(e){const f=e.target.files[0];if(f)processDocFile(f);}
+async function processDocFile(file){
+  const ext=file.name.split('.').pop().toLowerCase(),status=document.getElementById('doc-status'),prog=document.getElementById('dprog'),pb=document.getElementById('dpb');
+  try{status.textContent='⏳ Reading…';prog.style.display='block';pb.style.width='35%';
+    let text='';
+    if(ext==='docx')text=await parseDocx(file);else if(ext==='pdf')text=await parsePdf(file);else text=await file.text();
+    pb.style.width='100%';
+    if(!text.trim()){status.style.color='var(--fail)';status.textContent='❌ No text found. Try copy-pasting content instead.';return;}
+    status.style.color='var(--pass)';status.textContent=`✅ Extracted ${text.split('\n').filter(x=>x.trim()).length} lines. Opening generator…`;
+    setTimeout(()=>{closeModal();openGenModal(text);},600);
+  }catch(e){pb.style.background='var(--fail)';status.style.color='var(--fail)';status.textContent='❌ '+e.message;}
+}
+async function parseDocx(file){
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  if(!window.JSZip)throw new Error('JSZip failed to load. Check internet connection.');
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const entry=zip.file('word/document.xml');if(!entry)throw new Error('Not a valid DOCX file.');
+  const xml=await entry.async('text');
+  const lines=[];
+  // Match each paragraph block
+  const paraRe=/<w:p[ >][\s\S]*?<\/w:p>/g;
+  let pm;
+  while((pm=paraRe.exec(xml))!==null){
+    const para=pm[0];
+    // Detect heading style
+    const styleM=para.match(/<w:pStyle\s+w:val="([^"]+)"/);
+    const style=(styleM?styleM[1]:'').toLowerCase();
+    const isHeading=/heading|title/.test(style);
+    // Detect list (numbered or bulleted)
+    const isList=!!para.match(/<w:numId\s+w:val=/);
+    // Extract ONLY the actual text runs (<w:t> elements)
+    const parts=[];
+    const tRe=/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
+    let tm;
+    while((tm=tRe.exec(para))!==null)parts.push(tm[1]);
+    const raw=parts.join('').replace(/\s+/g,' ').trim();
+    if(!raw||raw.length<4)continue;
+    // Skip lines that are pure numbers (page numbers etc)
+    if(/^\d{1,4}$/.test(raw))continue;
+    // Skip lines with mostly non-printable/garbage chars
+    const printable=(raw.match(/[\x20-\x7E\u00C0-\u024F]/g)||[]).length;
+    if(printable/raw.length<0.7)continue;
+    // Format with heading/bullet markers so the generator can split correctly
+    if(isHeading)lines.push('## '+raw);
+    else if(isList)lines.push('• '+raw);
+    else lines.push(raw);
+  }
+  if(!lines.length)throw new Error('No readable text found in this document. Try saving it as .txt first.');
+  return lines.join('\n');
+}
+async function parsePdf(file){
+  if(!window.pdfjsLib){await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');if(!window.pdfjsLib)throw new Error('PDF.js failed to load.');window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}
+  const pdf=await window.pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;
+  const allLines=[];
+  for(let i=1;i<=pdf.numPages;i++){
+    const page=await pdf.getPage(i);
+    const c=await page.getTextContent();
+    // Group text items by their Y position (same line)
+    const lm={};
+    for(const item of c.items){
+      if(!item.str.trim())continue;
+      const y=Math.round(item.transform[5]);
+      lm[y]=(lm[y]?lm[y]+' ':'')+item.str;
+    }
+    // Sort top-to-bottom and collect lines
+    Object.keys(lm).sort((a,b)=>b-a).forEach(y=>{
+      const line=lm[y].trim();
+      if(!line||line.length<4)return;
+      if(/^\d{1,4}$/.test(line))return; // skip page numbers
+      allLines.push(line);
+    });
+    allLines.push(''); // page break
+  }
+  const text=allLines.join('\n').replace(/\n{3,}/g,'\n\n').trim();
+  if(!text)throw new Error('No readable text found. May be a scanned/image PDF.');
+  return text;
+}
+function openImportJSON(){document.getElementById('json-inp').click();}
+function handleImportJSON(e){
+  const file=e.target.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{try{const data=JSON.parse(ev.target.result);(data.projects||[]).forEach(p=>{if(!repo.projects.includes(p))repo.projects.push(p);});const ex=new Set(repo.testCases.map(tc=>tc.id));let imp=0;(data.testCases||[]).forEach(tc=>{if(!ex.has(tc.id)){repo.testCases.push(tc);imp++;}});(data.testRuns||[]).forEach(r=>{if(!repo.testRuns.find(x=>x.id===r.id))repo.testRuns.push(r);});Object.assign(repo.runResults,data.runResults||{});repo.nextId=Math.max(repo.nextId,data.nextId||1);repo.nextRunId=Math.max(repo.nextRunId,data.nextRunId||1);if(repo.projects.length>0&&!activeProject)activeProject=repo.projects[0];save();renderAll();renderRuns();renderDashboard();alert(`✅ Imported ${imp} case(s).`);}catch(err){alert('❌ Invalid JSON: '+err.message);}e.target.value='';};
+  reader.readAsText(file);
+}
+function exportJSON(){const b=new Blob([JSON.stringify(repo,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='TestRepository.json';a.click();URL.revokeObjectURL(a.href);}
+
+// ── Utilities ──
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function now(){return new Date().toLocaleString('sv').slice(0,16);}
+function fmtD(s){s=Math.max(0,s);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=Math.floor(s%60);return h>0?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
+function ag(el){el.style.height='auto';el.style.height=el.scrollHeight+'px';}
+const _ls={};function loadScript(src){return new Promise((res,rej)=>{if(_ls[src])return res();const s=document.createElement('script');s.src=src;s.onload=()=>{_ls[src]=true;res();};s.onerror=()=>rej(new Error('Failed to load '+src));document.head.appendChild(s);});}
+function showModal(html,small=false){const mo=document.getElementById('mo');mo.className='mo'+(small?' sm':'');mo.innerHTML=html;document.getElementById('mbg').style.display='flex';}
+function closeModal(){document.getElementById('mbg').style.display='none';}
+function renderAll(){renderProjSel();renderList();}
+
+// ── Init ──
+load().then(()=>{
+  renderAll();
+  renderDashboard();
+  const sp=new URLSearchParams(window.location.search);
+  if(sp.get('run')){
+    setTimeout(()=>{
+      switchView('runs');
+      selectRun(sp.get('run'));
+    },100);
+  }
+});
+
+// ═══════════════════════════════════════════
+// TCMGenerator — Intelligent NLP parser
+// ═══════════════════════════════════════════
+class TCMGenerator{
+  generate(text){
+    const t=text.trim();if(!t)return[];
+    if(this.isGherkin(t))  return this.parseGherkin(t);
+    if(this.isUserStory(t))return this.parseUserStory(t);
+    return this.splitIntoCases(t);
+  }
+  isGherkin(t){return/\b(scenario\s*:|feature\s*:|given\s+|when\s+|then\s+)/im.test(t);}
+  isUserStory(t){return/\bas\s+an?\b.+\bi\s+want\b/im.test(t);}
+  isTestable(t){
+    const lo=t.toLowerCase();
+    const hasReq=/(should|must|will|shall|can|able to|needs to|verify|ensure|check|test|validate)/i.test(lo);
+    const hasAct=/(click|tap|press|swipe|scroll|drag|open|close|type|enter|select|navigate|go to|display|show|appear|hide|trigger)/i.test(lo);
+    const hasNoun=/(user|player|system|button|screen|menu|popup|dialog|panel|text|icon|image|list|error|message)/i.test(lo);
+    return (hasReq||hasAct)&&(hasNoun||lo.length>20);
+  }
+  splitIntoCases(text){
+    const cases=[];
+    const lines=text.split('\n').map(l=>l.trim());
+    let section='';
+    for(const line of lines){
+      if(!line)continue;
+      if(/^#{1,3}\s+/.test(line)){section=line.replace(/^#{1,3}\s+/,'').trim();continue;}
+      if(line.length<8||/^\d{1,5}$/.test(line))continue;
+      const content=line.replace(/^[\u2022\-*\u25ba\d.)\]]+\s*/,'').trim();
+      if(content.length<8)continue;
+      const sents=this.sentences(content);
+      for(const s of sents){
+        if(!this.isTestable(s))continue;
+        const tc=this.makeCase(s,section);
+        if(tc)cases.push(tc);
+      }
+    }
+    if(!cases.length){
+      if(this.isTestable(text)){const tc=this.makeCase(text.trim(),'');if(tc)cases.push(tc);}
+    }
+    return cases;
+  }
+  makeCase(text,section){
+    section=section||'';
+    const t=text.trim();
+    if(t.length<8||/^\d{1,5}$/.test(t))return null;
+    let desc=t,expected='Feature works as expected.';
+    const sM=t.match(/^(.+?)\s+(should|must|will|would|needs?\s+to)\s+(.+)$/i);
+    const tM=t.match(/^(?:when\s+|if\s+|after\s+)?(.+?)[,\s]+(?:then|so|and\s+it)\s+((?:should|must|will|display|show|appear|navigate|redirect|open|enable|disable|allow|prevent).+)$/i);
+    if(tM){desc=tM[1].replace(/^(?:when|if|after)\s+/i,'').trim();expected=tM[2].trim();}
+    else if(sM){desc=sM[1].trim();expected=sM[1].trim()+' '+sM[2]+' '+sM[3].trim();}
+    const rawSum=section?'['+section+'] '+t:t;
+    const summary=rawSum.length>95?rawSum.slice(0,92)+'\u2026':rawSum;
+    return{summary,steps:[{description:desc,expectedResult:expected}],priority:this.pri(t),category:this.cat(section+' '+t)};
+  }
+  sentences(text){
+    const raw=text.split(/(?<=[.!?])\s+(?=[A-Z\d"'\-])/);
+    return raw.map(s=>s.trim()).filter(s=>s.length>=8&&!/^\d{1,5}$/.test(s));
+  }
+  parseGherkin(text){
+    const cases=[],lines=text.split(/\n/).map(l=>l.trim());
+    let cur=null,lastStep=null,inThen=false;
+    for(const line of lines){
+      if(!line)continue;if(/^feature\s*[:-]/i.test(line))continue;
+      if(/^scenario\s*(outline\s*)?:/i.test(line)){if(cur)cases.push(cur);cur={summary:line.replace(/^scenario\s*(outline\s*)?:\s*/i,'').trim(),steps:[],priority:1,category:0};lastStep=null;inThen=false;}
+      else if(cur&&/^(given|when)\s+/i.test(line)){lastStep={description:line.replace(/^(given|when)\s+/i,'').trim(),expectedResult:''};cur.steps.push(lastStep);inThen=false;}
+      else if(cur&&/^then\s+/i.test(line)){const r=line.replace(/^then\s+/i,'').trim();if(lastStep)lastStep.expectedResult=r;else cur.steps.push({description:'Observe',expectedResult:r});inThen=true;}
+      else if(cur&&/^and\s+/i.test(line)){const r=line.replace(/^and\s+/i,'').trim();if(inThen&&lastStep)lastStep.expectedResult+=(lastStep.expectedResult?' ':'')+r;else{lastStep={description:r,expectedResult:''};cur.steps.push(lastStep);}}
+      else if(cur&&/^but\s+/i.test(line)){lastStep={description:line.replace(/^but\s+/i,'').trim(),expectedResult:''};cur.steps.push(lastStep);inThen=false;}
+    }
+    if(cur)cases.push(cur);
+    for(const c of cases){c.category=this.cat(c.summary);for(const s of c.steps)if(!s.expectedResult)s.expectedResult='Step completes successfully.';if(!c.steps.length)c.steps.push({description:'Execute the scenario',expectedResult:'Scenario completes successfully.'});}
+    return cases.length?cases:this.splitIntoCases(text);
+  }
+  parseUserStory(text){
+    const cases=[];
+    for(const block of text.split(/\n\n+/)){
+      const m=block.match(/as\s+an?\s+(.+?),?\s+i\s+want\s+(?:to\s+)?(.+?)(?:,?\s+so\s+that\s+(.+))?$/im);
+      if(!m){cases.push(...this.splitIntoCases(block));continue;}
+      const role=m[1].trim(),act=m[2].trim(),ben=(m[3]||'').trim();
+      cases.push({summary:act+' (as '+role+')',priority:this.pri(act),category:this.cat(act+' '+role),steps:[{description:'Navigate as a '+role,expectedResult:'Authenticated as '+role+' successfully.'},{description:act,expectedResult:ben||'Feature works as expected.'}]});
+    }
+    return cases;
+  }
+  cat(t){const lo=t.toLowerCase();if(/button|ui|screen|popup|menu|panel|dialog|click|tap|display/.test(lo))return 0;if(/coin|purchase|buy|economy|shop|store|price|payment|currency/.test(lo))return 2;if(/sound|audio|music|sfx|mute|volume/.test(lo))return 3;if(/setting|preference|config|option|language/.test(lo))return 4;if(/network|internet|connect|online|offline|api|server|sync/.test(lo))return 5;if(/fps|performance|lag|loading|speed|memory/.test(lo))return 6;if(/analytic|event|track|firebase|amplitude/.test(lo))return 7;if(/game|play|card|move|score|win|lose|level|board/.test(lo))return 1;return 8;}
+  pri(t){const lo=t.toLowerCase();if(/critical|crash|fatal|security|data.?loss/.test(lo))return 3;if(/important|major|payment|login|auth/.test(lo))return 2;if(/minor|trivial|cosmetic|typo/.test(lo))return 0;return 1;}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,413 @@
+{
+  "projects": [
+    "Solitaire",
+    "Arrow Maze",
+    "Word Solitaire"
+  ],
+  "testCases": [
+    {
+      "id": "TC-001",
+      "project": "Word Solitaire",
+      "summary": "Verify FTUE launches and works as expected",
+      "priority": 1,
+      "category": 1,
+      "status": 0,
+      "steps": [
+        {
+          "order": 1,
+          "description": "Launch the game",
+          "expectedResult": "Game should launch successfully.",
+          "actualResult": "",
+          "status": 0
+        },
+        {
+          "order": 2,
+          "description": "Complete the FTUE",
+          "expectedResult": "FTUE completes smoothly without breaking game.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-20 17:52",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-002",
+      "project": "Solitaire",
+      "summary": "Verify Stats are displayed correctly",
+      "priority": 1,
+      "category": 1,
+      "status": 2,
+      "steps": [
+        {
+          "order": 1,
+          "description": "Launch the game",
+          "expectedResult": "Game should launch without any issue",
+          "actualResult": "",
+          "status": 0
+        },
+        {
+          "order": 2,
+          "description": "Play through the game and Win the Deal",
+          "expectedResult": "Deal should progress and be finished",
+          "actualResult": "",
+          "status": 0
+        },
+        {
+          "order": 3,
+          "description": "Click on 'Stats' button on top right corner of the game option screen",
+          "expectedResult": "Stats should be updated according the Deals won and played\nCheck for both Draw 1 and Draw 3",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-20 17:53",
+      "lastRunAt": "2026-04-21 11:02",
+      "durationSeconds": 0,
+      "failReason": "",
+      "bugLink": ""
+    },
+    {
+      "id": "TC-003",
+      "project": "Solitaire",
+      "summary": "Verify \"Replay\" works as expected",
+      "priority": 1,
+      "category": 1,
+      "status": 2,
+      "steps": [
+        {
+          "order": 1,
+          "description": "Launch the game\n",
+          "expectedResult": "Game should launch without any issue\n",
+          "actualResult": "",
+          "status": 0
+        },
+        {
+          "order": 2,
+          "description": "Click on Replay button in the game options screen",
+          "expectedResult": "Game should replay from the start without any issue and no changes in cards should be shown",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-20 17:54",
+      "lastRunAt": "2026-04-21 11:02",
+      "durationSeconds": 2.53,
+      "failReason": "",
+      "bugLink": ""
+    },
+    {
+      "id": "TC-004",
+      "project": "Word Solitaire",
+      "summary": "Verify game should launch without internet",
+      "priority": 1,
+      "category": 0,
+      "status": 0,
+      "steps": [
+        {
+          "order": 1,
+          "description": "1-Turn of the internet\n2-Launch the game\n",
+          "expectedResult": "1- Device internet should off\n2-Game should launch successfully\n",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-20 17:57",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-005",
+      "project": "Solitaire",
+      "summary": "[Overview] Each day users receive 4 tasks.",
+      "priority": 1,
+      "category": 8,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Each day users receive 4 tasks.",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-006",
+      "project": "Solitaire",
+      "summary": "[Daily Challenge Structure] Each day contains 4 tasks:",
+      "priority": 1,
+      "category": 8,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Each day contains 4 tasks:",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-007",
+      "project": "Solitaire",
+      "summary": "[Daily Challenge Structure] Login Task",
+      "priority": 2,
+      "category": 8,
+      "status": 3,
+      "failReason": "Failed",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Login Task",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "2026-04-21 11:02",
+      "durationSeconds": 1.807
+    },
+    {
+      "id": "TC-008",
+      "project": "Solitaire",
+      "summary": "[Daily Challenge Structure] Engagement Tasks",
+      "priority": 1,
+      "category": 8,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Engagement Tasks",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-009",
+      "project": "Solitaire",
+      "summary": "[Engagement Tasks] Play X games",
+      "priority": 1,
+      "category": 1,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Play X games",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-010",
+      "project": "Solitaire",
+      "summary": "[Engagement Tasks] Win X games",
+      "priority": 1,
+      "category": 1,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Win X games",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-011",
+      "project": "Solitaire",
+      "summary": "[Engagement Tasks] Win under X moves",
+      "priority": 1,
+      "category": 1,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Win under X moves",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-012",
+      "project": "Solitaire",
+      "summary": "[Engagement Tasks] Win under Y minutes",
+      "priority": 1,
+      "category": 1,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Win under Y minutes",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-013",
+      "project": "Solitaire",
+      "summary": "[Task Selection Logic] The system randomly selects 2 engagement tasks using these weights.",
+      "priority": 1,
+      "category": 8,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "The system randomly selects 2 engagement tasks using these weights.",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    },
+    {
+      "id": "TC-014",
+      "project": "Solitaire",
+      "summary": "[Task Skip] Skipped tasks are marked completed.",
+      "priority": 1,
+      "category": 8,
+      "status": 0,
+      "failReason": "",
+      "bugLink": "",
+      "steps": [
+        {
+          "order": 1,
+          "description": "Skipped tasks are marked completed.",
+          "expectedResult": "Feature works as expected.",
+          "actualResult": "",
+          "status": 0
+        }
+      ],
+      "createdAt": "2026-04-21 10:59",
+      "lastRunAt": "",
+      "durationSeconds": 0
+    }
+  ],
+  "nextId": 15,
+  "autoScannedProjects": [],
+  "testRuns": [
+    {
+      "id": "RUN-001",
+      "name": "Solitaire sprint",
+      "version": "1.60",
+      "date": "2026-04-21",
+      "project": "Solitaire",
+      "caseIds": [
+        "TC-002",
+        "TC-003",
+        "TC-009",
+        "TC-010",
+        "TC-011",
+        "TC-012"
+      ],
+      "createdAt": "2026-04-21 11:08"
+    },
+    {
+      "id": "RUN-002",
+      "name": "Solitaire sprint",
+      "version": "1.2.3",
+      "date": "2026-04-21",
+      "project": "Solitaire",
+      "caseIds": [
+        "TC-002",
+        "TC-003",
+        "TC-009",
+        "TC-010",
+        "TC-011",
+        "TC-012"
+      ],
+      "createdAt": "2026-04-21 11:16"
+    }
+  ],
+  "runResults": {
+    "RUN-001": {
+      "TC-003": {
+        "status": 2,
+        "failReason": "",
+        "bugLink": ""
+      },
+      "TC-009": {
+        "status": 2,
+        "failReason": "",
+        "bugLink": ""
+      },
+      "TC-010": {
+        "status": 2,
+        "failReason": "",
+        "bugLink": ""
+      },
+      "TC-011": {
+        "status": 2,
+        "failReason": "",
+        "bugLink": ""
+      },
+      "TC-012": {
+        "status": 2,
+        "failReason": "",
+        "bugLink": ""
+      },
+      "TC-002": {
+        "status": 4,
+        "failReason": "",
+        "bugLink": ""
+      }
+    },
+    "RUN-002": {}
+  },
+  "nextRunId": 3
+}
