@@ -391,22 +391,26 @@ async function doSave(){
   localStorage.setItem('tcm_repo',JSON.stringify(repo));
 }
 async function load(){
-  let data;
-  if(IS_SERVER){try{const r=await fetch('/api/repo',{headers:{'Authorization': teamKey}});if(r.ok)data=await r.json();}catch{}}
-  if(!data){const d=localStorage.getItem('tcm_repo');if(d)try{data=JSON.parse(d);}catch{}}
-  if(data){
-    repo=data;
-    if(!repo.projects)repo.projects=[];
-    if(!repo.testCases)repo.testCases=[];
-    if(!repo.testRuns)repo.testRuns=[];
-    if(!repo.runResults)repo.runResults={};
-    if(!repo.nextId)repo.nextId=1;
-    if(!repo.nextRunId)repo.nextRunId=1;
-    if(!repo.autoScannedProjects)repo.autoScannedProjects=[];
-    shadowRepo = JSON.parse(JSON.stringify(repo));
-  }
-  if(repo.projects.length>0)activeProject=repo.projects[0];
+  // 1. Paint from localStorage immediately so page is never blank on refresh
+  const cached = localStorage.getItem('tcm_repo');
+  if(cached){try{const d=JSON.parse(cached);applyRepo(d);}catch{}}
+  // 2. Then try server for latest data
+  if(IS_SERVER){try{const r=await fetch('/api/repo',{headers:{'Authorization': teamKey}});if(r.ok){const d=await r.json();applyRepo(d);localStorage.setItem('tcm_repo',JSON.stringify(d));}}catch{}}
   renderProfile();
+}
+function applyRepo(data){
+  repo=data;
+  if(!repo.projects)repo.projects=[];
+  if(!repo.testCases)repo.testCases=[];
+  if(!repo.testRuns)repo.testRuns=[];
+  if(!repo.runResults)repo.runResults={};
+  if(!repo.nextId)repo.nextId=1;
+  if(!repo.nextRunId)repo.nextRunId=1;
+  if(!repo.autoScannedProjects)repo.autoScannedProjects=[];
+  if(!repo.platforms)repo.platforms={};
+  shadowRepo=JSON.parse(JSON.stringify(repo));
+  if(repo.projects.length>0 && !activeProject) activeProject=repo.projects[0];
+  renderAll(); renderRuns(); renderDashboard();
 }
 
 // ── Navigation ──
@@ -676,8 +680,11 @@ function renderRunDetail(){
     <div class="run-hdr">
       <div style="flex:1">
         <h2 style="font-size:18px;font-weight:700;margin-bottom:4px">${esc(run.name)}</h2>
-        <div class="run-hdr-meta">Version: <b>${esc(run.version)}</b> · Date: <b>${esc(run.date)}</b> · Tester: <b>${esc(run.testerName||'Unassigned')}</b> · Project: <b>${esc(run.project)}</b></div>
-        <div style="margin-top:6px"><button class="tbtn rs" style="padding:4px 10px;font-size:11px" onclick="navigator.clipboard.writeText(window.location.origin+window.location.pathname+'?run='+encodeURIComponent('${run.id}'));alert('Link copied to clipboard!')">🔗 Copy Link to Run</button></div>
+        <div class="run-hdr-meta">Version: <b>${esc(run.version)}</b> · Date: <b>${esc(run.date)}</b> · Tester: <b>${esc(run.testerName||'Unassigned')}</b> · Platform: <b>${esc(run.platform||'Any')}</b> · Project: <b>${esc(run.project)}</b></div>
+        <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="tbtn rs" style="padding:4px 10px;font-size:11px" onclick="navigator.clipboard.writeText(window.location.origin+window.location.pathname+'?run='+encodeURIComponent('${run.id}'));alert('Link copied to clipboard!')">🔗 Copy Link</button>
+          <button class="tbtn" style="padding:4px 10px;font-size:11px;background:var(--card2);color:var(--txt)" onclick="openEditRunModal('${run.id}')">✏️ Edit Run</button>
+        </div>
       </div>
       <div style="text-align:center">
         <svg viewBox="0 0 36 36" width="64" height="64">
@@ -793,20 +800,33 @@ function deleteRun(runId){
   selectedRunId='';save();renderRuns();renderRunDetail();renderDashboard();
 }
 
+// ── Shared Run Case List HTML ──
+function buildCaseListHtml(cases, selectedIds){
+  const byCategory={};
+  for(const tc of cases){const c=CATEGORY[tc.category]||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
+  return Object.entries(byCategory).map(([cat,tcs])=>{
+    const allChecked=tcs.every(tc=>selectedIds?selectedIds.includes(tc.id):true);
+    return`<div class="cs-group-head" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" class="cat-cb" data-cat="${esc(cat)}" ${allChecked?'checked':''} title="Toggle all ${esc(cat)}" onchange="toggleCategory('${esc(cat)}',this.checked)" style="width:14px;height:14px;cursor:pointer">
+      <span onclick="toggleCategory('${esc(cat)}',!document.querySelector('.cat-cb[data-cat=\'${esc(cat)}\']').checked);document.querySelector('.cat-cb[data-cat=\'${esc(cat)}\']').checked=!document.querySelector('.cat-cb[data-cat=\'${esc(cat)}\']').checked">${esc(cat)}</span>
+    </div>
+    ${tcs.map(tc=>`<div class="cs-item">
+      <input type="checkbox" class="run-case-cb" id="rcb-${tc.id}" value="${tc.id}" data-cat="${esc(cat)}" ${(!selectedIds||selectedIds.includes(tc.id))?'checked':''}>
+      <span class="cs-id">${esc(tc.id)}</span>
+      <label class="cs-sum" for="rcb-${tc.id}">${esc(tc.summary)}</label>
+    </div>`).join('')}`;
+  }).join('');
+}
+function toggleCategory(cat,checked){
+  document.querySelectorAll(`.run-case-cb[data-cat="${cat}"]`).forEach(cb=>cb.checked=checked);
+  updateRunCount();
+}
+
 // ── New Run Modal ──
 function openNewRunModal(){
   if(!activeProject){alert('Create a project first.');return;}
   const cases=repo.testCases.filter(tc=>tc.project===activeProject);
   if(!cases.length){alert('Add some test cases to this project first.');return;}
-  const byCategory={};
-  for(const tc of cases){const c=CATEGORY[tc.category]||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
-  const caseListHtml=Object.entries(byCategory).map(([cat,tcs])=>`
-    <div class="cs-group-head">${esc(cat)}</div>
-    ${tcs.map(tc=>`<div class="cs-item">
-      <input type="checkbox" class="run-case-cb" id="rcb-${tc.id}" value="${tc.id}" checked>
-      <span class="cs-id">${esc(tc.id)}</span>
-      <label class="cs-sum" for="rcb-${tc.id}">${esc(tc.summary)}</label>
-    </div>`).join('')}`).join('');
   const today=new Date().toISOString().slice(0,10);
   showModal(`<div class="mh"><h2>🧪 New Test Run</h2><button class="mc" onclick="closeModal()">✕</button></div>
   <div class="mb">
@@ -814,8 +834,9 @@ function openNewRunModal(){
       <div><span class="fl">RUN NAME *</span><input id="rn-name" class="fi2" type="text" placeholder="e.g. Sprint 9 Smoke Test"></div>
       <div><span class="fl">VERSION *</span><input id="rn-ver" class="fi2" type="text" placeholder="e.g. 1.5.0"></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
       <div><span class="fl">TESTER NAME</span><input id="rn-tester" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${userProfile?esc(userProfile.name):''}"></div>
+      <div><span class="fl">PLATFORM</span><select id="rn-platform" class="fi2"><option value="">— Any —</option><option value="Android">Android</option><option value="iOS">iOS</option><option value="Both">Both</option></select></div>
       <div><span class="fl">DATE</span><input id="rn-date" class="fi2" type="date" value="${today}"></div>
     </div>
     <span class="fl">SELECT TEST CASES <span id="rn-count" style="color:var(--accent)">(${cases.length} selected)</span></span>
@@ -824,7 +845,7 @@ function openNewRunModal(){
       <button class="cb gh" onclick="selectAllRunCases(true)">All</button>
       <button class="cb gh" onclick="selectAllRunCases(false)">None</button>
     </div>
-    <div class="case-sel-list" id="rn-case-list">${caseListHtml}</div>
+    <div class="case-sel-list" id="rn-case-list">${buildCaseListHtml(cases,null)}</div>
   </div>
   <div class="mf">
     <button class="cb gh" onclick="closeModal()">Cancel</button>
@@ -833,20 +854,68 @@ function openNewRunModal(){
   document.querySelectorAll('.run-case-cb').forEach(cb=>cb.addEventListener('change',updateRunCount));
 }
 function updateRunCount(){const c=document.querySelectorAll('.run-case-cb:checked').length;const el=document.getElementById('rn-count');if(el)el.textContent=`(${c} selected)`;}
-function selectAllRunCases(sel){document.querySelectorAll('.run-case-cb').forEach(cb=>cb.checked=sel);updateRunCount();}
+function selectAllRunCases(sel){document.querySelectorAll('.run-case-cb').forEach(cb=>cb.checked=sel);document.querySelectorAll('.cat-cb').forEach(cb=>cb.checked=sel);updateRunCount();}
 function filterRunCases(q){const lo=q.toLowerCase();document.querySelectorAll('.cs-item').forEach(item=>{const id=item.querySelector('.cs-id')?.textContent||'';const sum=item.querySelector('.cs-sum')?.textContent||'';item.style.display=(id+sum).toLowerCase().includes(lo)?'':'none';});}
 function createRun(){
   const name=document.getElementById('rn-name').value.trim();
   const ver=document.getElementById('rn-ver').value.trim();
   const date=document.getElementById('rn-date').value;
   const tester=document.getElementById('rn-tester').value.trim();
+  const platform=document.getElementById('rn-platform').value;
   if(!name||!ver){alert('Please fill in the Run Name and Version.');return;}
   const caseIds=[...document.querySelectorAll('.run-case-cb:checked')].map(cb=>cb.value);
   if(!caseIds.length){alert('Select at least one test case.');return;}
-  const run={id:`RUN-${String(repo.nextRunId++).padStart(3,'0')}`,name,version:ver,testerName:tester,date,project:activeProject,caseIds,createdAt:now()};
+  const run={id:`RUN-${String(repo.nextRunId++).padStart(3,'0')}`,name,version:ver,testerName:tester,platform,date,project:activeProject,caseIds,createdAt:now()};
   repo.testRuns.push(run);
   repo.runResults[run.id]={};
   save();closeModal();renderRuns();selectRun(run.id);switchView('runs');renderDashboard();
+}
+
+// ── Edit Run Modal ──
+function openEditRunModal(runId){
+  const run=repo.testRuns.find(r=>r.id===runId); if(!run)return;
+  const cases=repo.testCases.filter(tc=>tc.project===run.project);
+  showModal(`<div class="mh"><h2>✏️ Edit Test Run</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+      <div><span class="fl">RUN NAME *</span><input id="er-name" class="fi2" type="text" value="${esc(run.name)}"></div>
+      <div><span class="fl">VERSION *</span><input id="er-ver" class="fi2" type="text" value="${esc(run.version)}"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <div><span class="fl">TESTER NAME</span><input id="er-tester" class="fi2" type="text" value="${esc(run.testerName||'')}"></div>
+      <div><span class="fl">PLATFORM</span><select id="er-platform" class="fi2"><option value="">— Any —</option><option value="Android" ${run.platform==='Android'?'selected':''}>Android</option><option value="iOS" ${run.platform==='iOS'?'selected':''}>iOS</option><option value="Both" ${run.platform==='Both'?'selected':''}>Both</option></select></div>
+      <div><span class="fl">DATE</span><input id="er-date" class="fi2" type="date" value="${esc(run.date||'')}"></div>
+    </div>
+    <span class="fl">TEST CASES <span id="rn-count" style="color:var(--accent)">(${run.caseIds.length} selected)</span></span>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input class="fi2" style="flex:1" type="text" placeholder="Filter cases…" oninput="filterRunCases(this.value)">
+      <button class="cb gh" onclick="selectAllRunCases(true)">All</button>
+      <button class="cb gh" onclick="selectAllRunCases(false)">None</button>
+    </div>
+    <div class="case-sel-list" id="rn-case-list">${buildCaseListHtml(cases, run.caseIds)}</div>
+  </div>
+  <div class="mf">
+    <button class="cb gh" onclick="closeModal()">Cancel</button>
+    <button class="cb pr" onclick="saveEditRun('${runId}')">💾 Save Changes</button>
+  </div>`);
+  document.querySelectorAll('.run-case-cb').forEach(cb=>cb.addEventListener('change',updateRunCount));
+}
+function saveEditRun(runId){
+  const run=repo.testRuns.find(r=>r.id===runId); if(!run)return;
+  const name=document.getElementById('er-name').value.trim();
+  const ver=document.getElementById('er-ver').value.trim();
+  if(!name||!ver){alert('Please fill in the Run Name and Version.');return;}
+  const caseIds=[...document.querySelectorAll('.run-case-cb:checked')].map(cb=>cb.value);
+  if(!caseIds.length){alert('Select at least one test case.');return;}
+  run.name=name; run.version=ver;
+  run.testerName=document.getElementById('er-tester').value.trim();
+  run.platform=document.getElementById('er-platform').value;
+  run.date=document.getElementById('er-date').value;
+  run.caseIds=caseIds;
+  // Clean up results for removed cases
+  const res=repo.runResults[runId]||{};
+  Object.keys(res).forEach(k=>{if(!caseIds.includes(k))delete res[k];});
+  save();closeModal();renderRuns();renderRunDetail();renderDashboard();
 }
 
 // ── Generate / Doc Import ──
@@ -994,14 +1063,12 @@ function renderAll(){renderProjSel();renderList();}
 
 // ── Init ──
 load().then(()=>{
-  renderAll();
-  renderDashboard();
   const sp=new URLSearchParams(window.location.search);
   if(sp.get('run')){
     setTimeout(()=>{
       switchView('runs');
       selectRun(sp.get('run'));
-    },100);
+    },150);
   }
 });
 
