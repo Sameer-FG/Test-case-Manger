@@ -264,7 +264,6 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
             <input type="checkbox" id="sel-all-cb" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" onchange="toggleSelectAll(this.checked)" title="Select all in view">
             <div class="sw" style="flex:1;margin-bottom:0"><input id="sinp" type="text" placeholder="Search…" oninput="renderList()"></div>
           </div>
-          </div>
           <div id="bulk-bar" style="display:none;align-items:center;gap:7px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)">
             <span id="bulk-cnt" style="font-size:11px;color:var(--muted);flex:1"></span>
             <button class="tbtn sp" style="font-size:11px;padding:3px 10px" onclick="deleteSelectedCases()">🗑 Delete</button>
@@ -528,7 +527,23 @@ async function load(){
   const cached = localStorage.getItem('tcm_repo');
   if(cached){try{const d=JSON.parse(cached);applyRepo(d);}catch{}}
   // 2. Then try server for latest data
-  if(IS_SERVER){try{const r=await fetch('/api/repo',{headers:{'Authorization': teamKey}});if(r.ok){const d=await r.json();applyRepo(d);localStorage.setItem('tcm_repo',JSON.stringify(d));}}catch{}}
+  if(IS_SERVER){
+    try {
+      const r=await fetch('/api/repo',{headers:{'Authorization': teamKey}});
+      if(r.ok){
+        const d=await r.json();
+        // Self-heal: If server is completely blank (e.g. Render restarted and wiped ephemeral file)
+        // but we have data locally, upload our local data to restore the server.
+        if (d.projects.length === 0 && d.testCases.length === 0 && repo.projects.length > 0) {
+          console.warn("Server is blank. Restoring data from local browser cache...");
+          save(); // Trigger a sync back to server
+        } else {
+          applyRepo(d);
+          localStorage.setItem('tcm_repo',JSON.stringify(d));
+        }
+      }
+    }catch{}
+  }
   renderProfile();
 }
 function applyRepo(data){
