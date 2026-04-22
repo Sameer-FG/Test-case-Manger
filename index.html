@@ -314,19 +314,59 @@ let selectedCases=new Set();
 let runFilterStatus=-1;
 let generatedCases=[], genSelected=[], _failCb=null;
 
-// ── Server ──
-async function pingServer(){ if(!IS_SERVER)return; try{const r=await fetch('/api/ping');document.getElementById('srv-dot').style.background=r.ok?'var(--pass)':'var(--fail)';}catch{document.getElementById('srv-dot').style.background='var(--fail)';} }
+// ── Server & Auth ──
+let teamKey = localStorage.getItem('tcm_team_key')||'';
+async function pingServer(){ 
+  if(!IS_SERVER)return; 
+  try{
+    const r=await fetch('/api/check-auth', {headers:{'Authorization': teamKey}});
+    const d=await r.json();
+    if(d.locked && !d.ok) { showUnlockScreen(); }
+    document.getElementById('srv-dot').style.background=r.ok?'var(--pass)':'var(--fail)';
+  }catch{document.getElementById('srv-dot').style.background='var(--fail)';} 
+}
 setInterval(pingServer,15000); pingServer();
 
+function showUnlockScreen(){
+  if(document.getElementById('unlock-modal')) return;
+  const d = document.createElement('div'); d.id='unlock-modal';
+  d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)";
+  d.innerHTML=`<div class="modal" style="width:340px;text-align:center"><div class="mh"><h2>🔒 Team Access Restricted</h2></div>
+    <div class="mb"><p style="font-size:13px;color:var(--muted);margin-bottom:15px">This QA repository requires your organization's Team Key.</p>
+    <input id="tk-input" class="fi2" type="password" placeholder="Enter Team Key" style="text-align:center;margin-bottom:15px">
+    <button class="cb pr" style="width:100%" onclick="unlockApp()">Unlock</button></div></div>`;
+  document.body.appendChild(d);
+}
+async function unlockApp(){
+  teamKey = document.getElementById('tk-input').value;
+  localStorage.setItem('tcm_team_key', teamKey);
+  document.getElementById('unlock-modal').remove();
+  pingServer(); load();
+}
+
 // ── Storage ──
+let shadowRepo = null;
 let _st; function save(){clearTimeout(_st);_st=setTimeout(doSave,300);}
 async function doSave(){
-  if(IS_SERVER){try{await fetch('/api/repo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(repo)});}catch(e){console.warn(e);}}
+  if(IS_SERVER && shadowRepo){
+    try{
+      const pl = { projects: repo.projects, nextId: repo.nextId, nextRunId: repo.nextRunId, fullRepoFallback: repo };
+      pl.updatedCases = repo.testCases.filter(c => JSON.stringify(c) !== JSON.stringify(shadowRepo.testCases.find(s=>s.id===c.id)));
+      pl.updatedRuns = repo.testRuns.filter(r => JSON.stringify(r) !== JSON.stringify(shadowRepo.testRuns.find(s=>s.id===r.id)));
+      pl.updatedResults = {};
+      let resultsChanged=false;
+      for (const runId in repo.runResults) { if(JSON.stringify(repo.runResults[runId]) !== JSON.stringify(shadowRepo.runResults[runId])) { pl.updatedResults[runId]=repo.runResults[runId]; resultsChanged=true; } }
+      if (!resultsChanged) delete pl.updatedResults;
+      
+      const r = await fetch('/api/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':teamKey},body:JSON.stringify(pl)});
+      if (r.ok) shadowRepo = JSON.parse(JSON.stringify(repo));
+    }catch(e){console.warn(e);}
+  }
   localStorage.setItem('tcm_repo',JSON.stringify(repo));
 }
 async function load(){
   let data;
-  if(IS_SERVER){try{const r=await fetch('/api/repo');if(r.ok)data=await r.json();}catch{}}
+  if(IS_SERVER){try{const r=await fetch('/api/repo',{headers:{'Authorization': teamKey}});if(r.ok)data=await r.json();}catch{}}
   if(!data){const d=localStorage.getItem('tcm_repo');if(d)try{data=JSON.parse(d);}catch{}}
   if(data){
     repo=data;
@@ -337,6 +377,7 @@ async function load(){
     if(!repo.nextId)repo.nextId=1;
     if(!repo.nextRunId)repo.nextRunId=1;
     if(!repo.autoScannedProjects)repo.autoScannedProjects=[];
+    shadowRepo = JSON.parse(JSON.stringify(repo));
   }
   if(repo.projects.length>0)activeProject=repo.projects[0];
 }
@@ -605,7 +646,9 @@ function renderRunDetail(){
       <span class="rst-chip" style="background:rgba(245,158,11,.1);color:var(--blocked)">🟠 Blocked: ${s.blocked}</span>
       <span class="rst-chip" style="background:rgba(168,85,247,.1);color:var(--skip)">⏭ Skipped: ${s.skip}</span>
       <span class="rst-chip" style="background:rgba(255,255,255,.06);color:var(--muted)">○ Untested: ${s.notrun}</span>
-      <button class="btn del" style="margin-left:auto;padding:5px 12px;font-size:11px" onclick="deleteRun('${run.id}')">🗑 Delete Run</button>
+      <div style="flex:1"></div>
+      <button class="btn pr" style="margin-right:6px;padding:5px 12px;font-size:11px" onclick="triggerSlackSync('${run.id}')">📢 Sync Slack</button>
+      <button class="btn del" style="padding:5px 12px;font-size:11px" onclick="deleteRun('${run.id}')">🗑 Delete</button>
     </div>
     <div style="display:flex;align-items:center;margin-top:16px;margin-bottom:12px">
       <div class="sl" style="margin:0;flex:1">Test Cases (${cases.length})</div>
@@ -646,6 +689,50 @@ function markRunCase(runId,caseId,status){
   save();renderRunDetail();renderRuns();
   if(document.getElementById('view-dashboard').classList.contains('on'))renderDashboard();
 }
+function updateRunResultWithFail(caseId, reason, bugLink) {
+  const r = repo.runResults[selectedRunId];
+  if (r) { r[caseId] = { status:3, failReason:reason, bugLink:bugLink }; save(); renderRunDetail(); renderRuns(); }
+}
+
+async function triggerSlackSync(runId) {
+  if (!IS_SERVER) { alert('Slack notifications only work when hosted on your team server.'); return; }
+  const run=repo.testRuns.find(r=>r.id===runId); if(!run)return;
+  const s=getRunStats(runId);
+  const isComplete=isRunComplete(runId);
+  const pct=s.total>0?Math.round((s.pass+s.fail+s.blocked+s.skip)/s.total*100):0;
+  
+  // Format failing cases
+  const res=repo.runResults[runId]||{};
+  let failText = '';
+  for(const tcId of run.caseIds){
+    const rr=res[tcId];
+    if(rr && rr.status===3){
+      const tc=repo.testCases.find(x=>x.id===tcId);
+      failText += `\n  • *${tc?tc.summary:tcId}*\n    > Bug: ${rr.bugLink||'N/A'} | Reason: ${rr.failReason||'N/A'}`;
+    }
+  }
+
+  const payload = {
+    blocks: [
+      { type: "header", text: { type: "plain_text", text: `📢 Test Run Sync: ${run.name}`, emoji: true } },
+      { type: "section", text: { type: "mrkdwn", text: `*Project:* ${run.project}\n*Version:* ${run.version}\n*Tester:* ${run.testerName||'Unassigned'}\n*Status:* ${isComplete?'✅ Completed':'⏳ In Progress'} (${pct}%)\n\n*Stats:* ✅ Pass: ${s.pass}  |  ❌ Fail: ${s.fail}  |  🟠 Blocked: ${s.blocked}  |  ⏭ Skip: ${s.skip}  |  ⚪ Untested: ${s.notrun}` } }
+    ]
+  };
+
+  if (s.fail > 0) {
+    payload.blocks.push({ type: "divider" });
+    payload.blocks.push({ type: "section", text: { type: "mrkdwn", text: `*❌ Failed Cases:*${failText}` } });
+  }
+
+  const btn = event.currentTarget; const orgText = btn.innerHTML; btn.innerHTML='<span class="spinner" style="margin-right:4px"></span> Sending...';
+  try {
+    await fetch('/api/slack', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': teamKey }, body: JSON.stringify(payload) });
+    btn.innerHTML='✅ Sent!'; setTimeout(()=>btn.innerHTML=orgText,2000);
+  } catch(e) {
+    alert('Failed to send Slack notification.'); btn.innerHTML=orgText;
+  }
+}
+
 function markRunCaseWithFail(runId,caseId,reason,bugLink){
   if(!repo.runResults[runId])repo.runResults[runId]={};
   repo.runResults[runId][caseId]={status:3,failReason:reason,bugLink:bugLink};
