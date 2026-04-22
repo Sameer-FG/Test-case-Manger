@@ -415,9 +415,9 @@ function showSwitchAccount(){
   d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)";
   d.innerHTML=`<div class="modal" style="width:360px"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔑 Login / Switch Account</h2></div>
     <div class="mb">
-      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" value="${oldKey}" placeholder="Team Key"></div>
-      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="Your full name"></div>
-      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="your@felicitygames.com"></div>
+      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" value="${oldKey}" placeholder="Team Key" onkeydown="if(event.key==='Enter')unlockApp()"></div>
+      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="Your full name" onkeydown="if(event.key==='Enter')unlockApp()"></div>
+      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="your@felicitygames.com" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <button class="cb pr" style="width:100%;margin-bottom:8px" onclick="unlockApp()">Login</button>
       <button class="cb gh" style="width:100%" onclick="document.getElementById('unlock-modal').remove()">Cancel</button>
     </div></div>`;
@@ -450,9 +450,9 @@ function showUnlockScreen(){
   d.innerHTML=`<div class="modal" style="width:360px;text-align:left"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔒 Team Access Restricted</h2></div>
     <div class="mb">
       ${profileHtml}
-      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" placeholder="Ask your admin for the key" value="${teamKey}"></div>
-      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${lastProfile?esc(lastProfile.name):''}"></div>
-      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${lastProfile?esc(lastProfile.email):''}"></div>
+      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" placeholder="Ask your admin for the key" value="${teamKey}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
+      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${lastProfile?esc(lastProfile.name):''}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
+      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${lastProfile?esc(lastProfile.email):''}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <button id="tk-btn" class="cb pr" style="width:100%" onclick="unlockApp()">Unlock & Login</button>
     </div></div>`;
   document.body.appendChild(d);
