@@ -319,30 +319,88 @@ let teamKey = localStorage.getItem('tcm_team_key')||'';
 let userProfile = null;
 try { userProfile = JSON.parse(localStorage.getItem('tcm_profile')||'null'); } catch(e){}
 
+let _pollTimer = null;
 async function pingServer(){ 
   if(!IS_SERVER)return; 
   try{
     const r=await fetch('/api/check-auth', {headers:{'Authorization': teamKey}});
     const d=await r.json();
-    if(d.locked && !d.ok) { showUnlockScreen(); } else { renderProfile(); }
+    if(d.locked && !d.ok) { stopPolling(); showUnlockScreen(); return; }
     document.getElementById('srv-dot').style.background=r.ok?'var(--pass)':'var(--fail)';
+    renderProfile();
   }catch{document.getElementById('srv-dot').style.background='var(--fail)';} 
 }
 setInterval(pingServer,15000); pingServer();
+
+// ── Real-time Polling Sync ──
+function startPolling(){
+  stopPolling();
+  _pollTimer = setInterval(async ()=>{
+    if(!IS_SERVER) return;
+    try{
+      const r = await fetch('/api/repo',{headers:{'Authorization':teamKey}});
+      if(!r.ok) return;
+      const fresh = await r.json();
+      const freshStr = JSON.stringify(fresh);
+      const currentStr = JSON.stringify(repo);
+      if(freshStr !== currentStr){
+        applyRepo(fresh);
+        localStorage.setItem('tcm_repo', freshStr);
+        shadowRepo = JSON.parse(freshStr);
+      }
+    }catch{}
+  }, 10000); // Poll every 10 seconds
+}
+function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} }
 
 function renderProfile() {
   let el = document.getElementById('user-profile-widget');
   if(!el) {
     el = document.createElement('div'); el.id = 'user-profile-widget';
-    el.style.cssText = "position:absolute;bottom:15px;left:15px;right:15px;background:var(--card2);padding:10px;border-radius:6px;display:flex;align-items:center;gap:10px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1)";
+    el.style.cssText = "position:absolute;bottom:15px;left:15px;right:15px;background:var(--card2);border-radius:8px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.15);overflow:hidden";
     document.querySelector('.sb').appendChild(el);
   }
   if(userProfile) {
     const ini = userProfile.name ? userProfile.name.charAt(0).toUpperCase() : '?';
-    el.innerHTML = `<div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px">${ini}</div>
-    <div style="flex:1;overflow:hidden"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(userProfile.name)}</div><div style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px">${esc(userProfile.email)}</div></div>`;
-    el.style.display='flex';
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px">
+        <div style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;flex-shrink:0">${ini}</div>
+        <div style="flex:1;overflow:hidden">
+          <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(userProfile.name)}</div>
+          <div style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px">${esc(userProfile.email)}</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid rgba(255,255,255,.06);display:flex">
+        <button onclick="showSwitchAccount()" style="flex:1;padding:7px;font-size:11px;background:none;border:none;color:var(--muted);cursor:pointer" title="Switch account">🔄 Switch</button>
+        <button onclick="logoutUser()" style="flex:1;padding:7px;font-size:11px;background:none;border:none;color:var(--fail);cursor:pointer" title="Log out">🚪 Logout</button>
+      </div>`;
+    el.style.display='block';
   } else { el.style.display='none'; }
+}
+function logoutUser(){
+  if(!confirm('Log out? You will need the Team Key to log back in.'))return;
+  teamKey=''; userProfile=null;
+  localStorage.removeItem('tcm_team_key');
+  localStorage.removeItem('tcm_profile');
+  stopPolling();
+  renderProfile();
+  showUnlockScreen();
+}
+function showSwitchAccount(){
+  // Re-open login but pre-fill team key, blank the name/email
+  const oldKey = teamKey;
+  if(document.getElementById('unlock-modal'))return;
+  const d = document.createElement('div'); d.id='unlock-modal';
+  d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)";
+  d.innerHTML=`<div class="modal" style="width:360px"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔄 Switch Account</h2></div>
+    <div class="mb">
+      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" value="${oldKey}" placeholder="Team Key"></div>
+      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="Your full name"></div>
+      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="your@felicitygames.com"></div>
+      <button class="cb pr" style="width:100%;margin-bottom:8px" onclick="unlockApp()">Login as New User</button>
+      <button class="cb gh" style="width:100%" onclick="document.getElementById('unlock-modal').remove()">Cancel</button>
+    </div></div>`;
+  document.body.appendChild(d);
 }
 
 function showUnlockScreen(){
@@ -367,7 +425,7 @@ async function unlockApp(){
   localStorage.setItem('tcm_team_key', teamKey);
   localStorage.setItem('tcm_profile', JSON.stringify(userProfile));
   document.getElementById('unlock-modal').remove();
-  renderProfile(); pingServer(); load();
+  renderProfile(); pingServer(); load().then(()=>startPolling());
 }
 
 // ── Storage ──
@@ -449,18 +507,21 @@ function renderDashboard(){
   const projSel=document.getElementById('db-proj-sel');
   if(projSel)projSel.innerHTML=repo.projects.length===0?'<option value="">— No projects —</option>':repo.projects.map(p=>`<option value="${esc(p)}"${p===activeProject?' selected':''}>${esc(p)}</option>`).join('');
   const proj=projSel?projSel.value:activeProject;
+  if(projSel && proj !== activeProject && proj) activeProject=proj;
   const cont=document.getElementById('db-content');if(!cont)return;
   if(!proj){cont.innerHTML='<p style="color:var(--muted);font-size:13px">Create a project to see stats here.</p>';return;}
   const s=getProjStats(proj);
   const passRate=s.total>0?Math.round(s.pass/s.total*100):0;
+  const failRate=s.total>0?Math.round(s.fail/s.total*100):0;
   const pw=s.total>0?Math.round(s.pass/s.total*100):0,fw=s.total>0?Math.round(s.fail/s.total*100):0,bw=s.total>0?Math.round(s.blocked/s.total*100):0,sw=s.total>0?Math.round(s.skip/s.total*100):0,nw=Math.max(0,100-pw-fw-bw-sw);
   const recentRuns=repo.testRuns.filter(r=>r.project===proj).slice(-8).reverse();
   cont.innerHTML=`
-    <div class="db-grid">
+    <div class="db-grid" style="grid-template-columns:repeat(5,1fr)">
       <div class="db-stat-card"><div class="val">${s.total}</div><div class="lbl">TOTAL CASES</div></div>
       <div class="db-stat-card"><div class="val" style="color:var(--pass)">${passRate}%</div><div class="lbl">PASS RATE</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--fail)">${failRate}%</div><div class="lbl">FAIL RATE</div></div>
       <div class="db-stat-card"><div class="val" style="color:var(--inprog)">${s.runs}</div><div class="lbl">TEST RUNS</div></div>
-      <div class="db-stat-card"><div class="val" style="color:var(--pass)">${s.completedRuns}</div><div class="lbl">RUNS COMPLETED</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--pass)">${s.completedRuns}</div><div class="lbl">RUNS DONE</div></div>
     </div>
     <div class="db-sec-title">Status Breakdown — ${esc(proj)}</div>
     <div class="stack-bar">
@@ -486,13 +547,32 @@ function renderDashboard(){
       <span class="run-badge" style="${complete?'background:rgba(34,197,94,.15);color:var(--pass)':'background:rgba(99,102,241,.15);color:var(--accent)'}">${complete?'Done':pct+'%'}</span>
     </div>`;}).join('')}`;
 }
+// Dashboard reads LIVE run results, not stale tc.status
 function getProjStats(proj){
-  const cases=repo.testCases.filter(tc=>tc.project===proj);
-  let pass=0,fail=0,blocked=0,skip=0,notrun=0,inprog=0;
-  for(const tc of cases){if(tc.status===2)pass++;else if(tc.status===3)fail++;else if(tc.status===4)blocked++;else if(tc.status===5)skip++;else if(tc.status===1)inprog++;else notrun++;}
+  // Aggregate all pass/fail/etc from run results (live execution data)
+  let pass=0,fail=0,blocked=0,skip=0,notrun=0;
   const runs=repo.testRuns.filter(r=>r.project===proj);
+  const allRunCaseIds = new Set(runs.flatMap(r=>r.caseIds));
+  for(const runId of runs.map(r=>r.id)){
+    const res=repo.runResults[runId]||{};
+    const run=repo.testRuns.find(r=>r.id===runId);
+    if(!run) continue;
+    for(const cid of run.caseIds){
+      const r=res[cid];
+      if(!r||r.status===0) notrun++;
+      else if(r.status===2) pass++;
+      else if(r.status===3) fail++;
+      else if(r.status===4) blocked++;
+      else if(r.status===5) skip++;
+    }
+  }
+  // Also count cases not in any run as untested
+  const allCases=repo.testCases.filter(tc=>tc.project===proj);
+  const notInRun=allCases.filter(tc=>!allRunCaseIds.has(tc.id)).length;
+  notrun+=notInRun;
+  const total=allCases.length;
   const completedRuns=runs.filter(r=>isRunComplete(r.id)).length;
-  return{total:cases.length,pass,fail,blocked,skip,notrun,inprog,runs:runs.length,completedRuns};
+  return{total, pass, fail, blocked, skip, notrun, runs:runs.length, completedRuns};
 }
 
 // ── Test Cases List ──
@@ -1063,6 +1143,7 @@ function renderAll(){renderProjSel();renderList();}
 
 // ── Init ──
 load().then(()=>{
+  startPolling();
   const sp=new URLSearchParams(window.location.search);
   if(sp.get('run')){
     setTimeout(()=>{
