@@ -399,6 +399,7 @@ function toggleProfileMenu() {
 }
 function logoutUser(){
   if(!confirm('Log out? You will need the Team Key to log back in.'))return;
+  if(userProfile) localStorage.setItem('tcm_last_profile', JSON.stringify(userProfile));
   teamKey=''; userProfile=null;
   localStorage.removeItem('tcm_team_key');
   localStorage.removeItem('tcm_profile');
@@ -425,14 +426,34 @@ function showSwitchAccount(){
 
 function showUnlockScreen(){
   if(document.getElementById('unlock-modal')) return;
+  let lastProfile = userProfile;
+  if (!lastProfile) { try { lastProfile = JSON.parse(localStorage.getItem('tcm_last_profile')||'null'); } catch(e){} }
+
   const d = document.createElement('div'); d.id='unlock-modal';
   d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)";
+  
+  let profileHtml = '';
+  if (lastProfile) {
+    const ini = lastProfile.name ? lastProfile.name.charAt(0).toUpperCase() : '?';
+    profileHtml = `
+      <div style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--accent);border-radius:8px;padding:12px;margin-bottom:16px;cursor:pointer" onclick="document.getElementById('tk-name').value='${esc(lastProfile.name)}';document.getElementById('tk-email').value='${esc(lastProfile.email)}';document.getElementById('tk-input').focus();">
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;flex-shrink:0">${ini}</div>
+        <div style="flex:1;overflow:hidden">
+          <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Log in as ${esc(lastProfile.name)}</div>
+          <div style="color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(lastProfile.email)}</div>
+        </div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px">Or enter details below</div>
+    `;
+  }
+
   d.innerHTML=`<div class="modal" style="width:360px;text-align:left"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔒 Team Access Restricted</h2></div>
     <div class="mb">
+      ${profileHtml}
       <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" placeholder="Ask your admin for the key" value="${teamKey}"></div>
-      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${userProfile?esc(userProfile.name):''}"></div>
-      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${userProfile?esc(userProfile.email):''}"></div>
-      <button class="cb pr" style="width:100%" onclick="unlockApp()">Unlock & Login</button>
+      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${lastProfile?esc(lastProfile.name):''}"></div>
+      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${lastProfile?esc(lastProfile.email):''}"></div>
+      <button id="tk-btn" class="cb pr" style="width:100%" onclick="unlockApp()">Unlock & Login</button>
     </div></div>`;
   document.body.appendChild(d);
 }
@@ -441,11 +462,41 @@ async function unlockApp(){
   const nm = document.getElementById('tk-name').value.trim();
   const em = document.getElementById('tk-email').value.trim();
   if(!tk || !nm || !em) { alert('Please fill in all fields.'); return; }
+
+  const btn = document.getElementById('tk-btn') || document.querySelector('#unlock-modal .cb.pr');
+  const oldText = btn.textContent;
+  btn.textContent = 'Verifying...';
+  btn.disabled = true;
+
+  if(IS_SERVER) {
+    try {
+      const r = await fetch('/api/check-auth', {headers:{'Authorization': tk}});
+      const d = await r.json();
+      if(!d.ok) {
+        alert('Incorrect Team Key!');
+        btn.textContent = oldText;
+        btn.disabled = false;
+        return;
+      }
+    } catch(e) {
+      alert('Network error verifying key.');
+      btn.textContent = oldText;
+      btn.disabled = false;
+      return;
+    }
+  }
+
   teamKey = tk; userProfile = { name: nm, email: em };
   localStorage.setItem('tcm_team_key', teamKey);
   localStorage.setItem('tcm_profile', JSON.stringify(userProfile));
-  document.getElementById('unlock-modal').remove();
-  renderProfile(); pingServer(); load().then(()=>startPolling());
+  localStorage.setItem('tcm_last_profile', JSON.stringify(userProfile));
+  
+  const m = document.getElementById('unlock-modal');
+  if(m) m.remove();
+  
+  renderProfile(); 
+  pingServer(); 
+  load().then(()=>startPolling());
 }
 
 // ── Storage ──
