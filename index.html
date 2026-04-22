@@ -327,9 +327,31 @@ async function pingServer(){
     const r=await fetch('/api/check-auth', {headers:{'Authorization': teamKey}});
     const d=await r.json();
     if(d.locked && !d.ok) { stopPolling(); showUnlockScreen(); return; }
-    document.getElementById('srv-dot').style.background=r.ok?'var(--pass)':'var(--fail)';
+    
+    const pingR = await fetch('/api/ping');
+    const pingD = await pingR.json();
+    const srvDot = document.getElementById('srv-dot');
+    
+    if(pingD.ok) {
+      if(pingD.isDb) {
+        srvDot.style.background = 'var(--pass)';
+        srvDot.title = 'Server connection: OK (MongoDB Active)';
+      } else {
+        srvDot.style.background = 'var(--inprog)';
+        srvDot.title = 'Server connection: OK (Local File Storage)';
+      }
+    } else {
+      srvDot.style.background = 'var(--fail)';
+      srvDot.title = 'Server connection: FAILED';
+    }
     renderProfile();
-  }catch{document.getElementById('srv-dot').style.background='var(--fail)';} 
+  }catch{
+    const srvDot = document.getElementById('srv-dot');
+    if (srvDot) {
+      srvDot.style.background='var(--fail)';
+      srvDot.title = 'Server connection: FAILED';
+    }
+  } 
 }
 setInterval(pingServer,15000); 
 // Show profile immediately from saved localStorage state (before any network call)
