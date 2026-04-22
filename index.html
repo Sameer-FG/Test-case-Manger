@@ -253,7 +253,6 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
     <div id="view-dashboard" class="view on">
       <div class="db-head">
         <h2>📊 Dashboard</h2>
-        <select class="db-proj-sel" id="db-proj-sel" onchange="renderDashboard()"></select>
       </div>
       <div id="db-content"></div>
     </div>
@@ -375,9 +374,19 @@ function renderProfile() {
     document.getElementById('upw-avatar').textContent = ini;
     document.getElementById('upw-name').textContent = userProfile.name;
     document.getElementById('upw-email').textContent = userProfile.email;
+    document.getElementById('upw-menu').innerHTML = `
+      <button onclick="event.stopPropagation();showSwitchAccount()" style="width:100%;text-align:left;padding:7px 10px;background:none;border:none;color:var(--text);cursor:pointer;border-radius:5px;font-size:12px;font-family:inherit" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">🔄 Switch Account</button>
+      <button onclick="event.stopPropagation();logoutUser()" style="width:100%;text-align:left;padding:7px 10px;background:none;border:none;color:var(--fail);cursor:pointer;border-radius:5px;font-size:12px;font-family:inherit" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">🚪 Logout</button>
+    `;
     widget.style.display = 'flex';
   } else {
-    widget.style.display = 'none';
+    document.getElementById('upw-avatar').textContent = '👤';
+    document.getElementById('upw-name').textContent = 'Guest';
+    document.getElementById('upw-email').textContent = 'Not logged in';
+    document.getElementById('upw-menu').innerHTML = `
+      <button onclick="event.stopPropagation();showSwitchAccount()" style="width:100%;text-align:left;padding:7px 10px;background:none;border:none;color:var(--pass);cursor:pointer;border-radius:5px;font-size:12px;font-family:inherit" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">🔑 Login / Set Profile</button>
+    `;
+    widget.style.display = 'flex';
   }
 }
 function toggleProfileMenu() {
@@ -403,12 +412,12 @@ function showSwitchAccount(){
   if(document.getElementById('unlock-modal'))return;
   const d = document.createElement('div'); d.id='unlock-modal';
   d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)";
-  d.innerHTML=`<div class="modal" style="width:360px"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔄 Switch Account</h2></div>
+  d.innerHTML=`<div class="modal" style="width:360px"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔑 Login / Switch Account</h2></div>
     <div class="mb">
       <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" value="${oldKey}" placeholder="Team Key"></div>
       <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="Your full name"></div>
       <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="your@felicitygames.com"></div>
-      <button class="cb pr" style="width:100%;margin-bottom:8px" onclick="unlockApp()">Login as New User</button>
+      <button class="cb pr" style="width:100%;margin-bottom:8px" onclick="unlockApp()">Login</button>
       <button class="cb gh" style="width:100%" onclick="document.getElementById('unlock-modal').remove()">Cancel</button>
     </div></div>`;
   document.body.appendChild(d);
@@ -496,9 +505,9 @@ function switchView(v){
 // ── Projects ──
 function setProject(p){activeProject=p;selectedId='';selectedRunId='';renderAll();renderRuns();renderDashboard();}
 function renderProjSel(){
-  const s=document.getElementById('proj-sel'),d=document.getElementById('db-proj-sel');
+  const s=document.getElementById('proj-sel');
   const opts=repo.projects.length===0?'<option value="">— No projects —</option>':repo.projects.map(p=>`<option value="${esc(p)}"${p===activeProject?' selected':''}>${esc(p)}</option>`).join('');
-  s.innerHTML=opts;if(d)d.innerHTML=opts;
+  if(s) s.innerHTML=opts;
 }
 function openProjModal(){
   showModal(`<div class="mh"><h2>📁 Projects</h2><button class="mc" onclick="closeModal()">✕</button></div>
@@ -515,10 +524,7 @@ function deleteProject(p){if(!confirm(`Delete project "${p}" and ALL its data?`)
 
 // ── Dashboard ──
 function renderDashboard(){
-  const projSel=document.getElementById('db-proj-sel');
-  if(projSel)projSel.innerHTML=repo.projects.length===0?'<option value="">— No projects —</option>':repo.projects.map(p=>`<option value="${esc(p)}"${p===activeProject?' selected':''}>${esc(p)}</option>`).join('');
-  const proj=projSel?projSel.value:activeProject;
-  if(projSel && proj !== activeProject && proj) activeProject=proj;
+  const proj=activeProject;
   const cont=document.getElementById('db-content');if(!cont)return;
   if(!proj){cont.innerHTML='<p style="color:var(--muted);font-size:13px">Create a project to see stats here.</p>';return;}
   const s=getProjStats(proj);
