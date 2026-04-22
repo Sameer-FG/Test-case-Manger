@@ -57,39 +57,97 @@ app.get('/api/repo', async (_, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Sync Granular Changes OR replace file
+// ── Merge helper (prevents overwrite on concurrent saves) ──
+function mergeRepos(existing, incoming) {
+  // Projects: union — never loses anyone's projects
+  const projects = [...new Set([...(existing.projects||[]), ...(incoming.projects||[])])];
+
+  // Test Cases: upsert by id — incoming wins for same id (latest edit wins)
+  const casesMap = {};
+  (existing.testCases||[]).forEach(c => casesMap[c.id] = c);
+  (incoming.testCases||[]).forEach(c => casesMap[c.id] = c);
+
+  // Test Runs: upsert by id
+  const runsMap = {};
+  (existing.testRuns||[]).forEach(r => runsMap[r.id] = r);
+  (incoming.testRuns||[]).forEach(r => runsMap[r.id] = r);
+
+  // Run Results: merge per run, then per case inside each run
+  const runResults = {};
+  const allRunIds = new Set([...Object.keys(existing.runResults||{}), ...Object.keys(incoming.runResults||{})]);
+  for (const rid of allRunIds) {
+    runResults[rid] = { ...(existing.runResults?.[rid]||{}), ...(incoming.runResults?.[rid]||{}) };
+  }
+
+  return {
+    projects,
+    testCases: Object.values(casesMap),
+    testRuns: Object.values(runsMap),
+    runResults,
+    nextId: Math.max(existing.nextId||1, incoming.nextId||1),
+    nextRunId: Math.max(existing.nextRunId||1, incoming.nextRunId||1),
+    autoScannedProjects: [...new Set([...(existing.autoScannedProjects||[]), ...(incoming.autoScannedProjects||[])])]
+  };
+}
+
+// Sync Granular Changes — always merges, never overwrites
 app.post('/api/sync', async (req, res) => {
   try {
     const { projects, nextId, nextRunId, updatedCases, updatedRuns, updatedResults, fullRepoFallback } = req.body;
     if (db) {
-      // Upsert Meta
-      if(projects) await db.collection('meta').updateOne({ id: 'main' }, { $set: { projects, nextId, nextRunId } }, { upsert: true });
+      // Projects: $addToSet so we never lose a teammate's project
+      if (projects && projects.length) {
+        await db.collection('meta').updateOne(
+          { id: 'main' },
+          {
+            $set: { nextId: nextId||1, nextRunId: nextRunId||1 },
+            $addToSet: { projects: { $each: projects } }
+          },
+          { upsert: true }
+        );
+      } else if (nextId || nextRunId) {
+        await db.collection('meta').updateOne(
+          { id: 'main' },
+          { $set: { nextId: nextId||1, nextRunId: nextRunId||1 } },
+          { upsert: true }
+        );
+      }
       // Upsert Cases
-      if(updatedCases && updatedCases.length) {
+      if (updatedCases && updatedCases.length) {
         const bulk = db.collection('testCases').initializeUnorderedBulkOp();
         updatedCases.forEach(c => { const doc={...c}; delete doc._id; bulk.find({ id: c.id }).upsert().updateOne({ $set: doc }); });
         await bulk.execute();
       }
       // Upsert Runs
-      if(updatedRuns && updatedRuns.length) {
+      if (updatedRuns && updatedRuns.length) {
         const bulk = db.collection('testRuns').initializeUnorderedBulkOp();
         updatedRuns.forEach(r => { const doc={...r}; delete doc._id; bulk.find({ id: r.id }).upsert().updateOne({ $set: doc }); });
         await bulk.execute();
       }
-      // Upsert Results
-      if(updatedResults) {
-        const bulk = db.collection('runResults').initializeUnorderedBulkOp();
-        Object.entries(updatedResults).forEach(([runId, data]) => { bulk.find({ id: runId }).upsert().updateOne({ $set: { data } }); });
-        if(bulk.batches && bulk.batches.length) await bulk.execute();
+      // Upsert Results — merge per-case, don't overwrite whole run
+      if (updatedResults) {
+        for (const [runId, data] of Object.entries(updatedResults)) {
+          const existing = await db.collection('runResults').findOne({ id: runId });
+          const merged = { ...(existing?.data||{}), ...data };
+          await db.collection('runResults').updateOne({ id: runId }, { $set: { data: merged } }, { upsert: true });
+        }
       }
       res.json({ ok: true });
     } else {
-      // Local file fallback
-      if(fullRepoFallback) fs.writeFileSync(DATA_FILE, JSON.stringify(fullRepoFallback, null, 2), 'utf8');
+      // Local file fallback — MERGE, never overwrite
+      if (fullRepoFallback) {
+        let existing = { projects:[], testCases:[], testRuns:[], runResults:{}, nextId:1, nextRunId:1 };
+        if (fs.existsSync(DATA_FILE)) {
+          try { existing = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch(e) {}
+        }
+        const merged = mergeRepos(existing, fullRepoFallback);
+        fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2), 'utf8');
+      }
       res.json({ ok: true });
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 
 // Slack Webhook Proxy
 app.post('/api/slack', async (req, res) => {
