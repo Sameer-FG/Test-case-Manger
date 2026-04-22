@@ -695,11 +695,10 @@ function renderList(){
   if(!cases.length){el.innerHTML=`<div class="emp">No cases found.<br>Press <b>＋ New Case</b> or <b>⚡ Generate</b>.</div>`;return;}
   el.innerHTML=cases.map(tc=>`<div class="ci${tc.id===selectedId?' on':''}" onclick="selectCase('${tc.id}')">
     <input type="checkbox" class="case-cb" style="accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex-shrink:0" ${selectedCases.has(tc.id)?'checked':''} onclick="event.stopPropagation();toggleCaseSel('${tc.id}')">
-    <div class="cd" style="background:${SC[tc.status]}"></div>
-    <div class="cf">
-      <div class="ci-id">${esc(tc.id)} <span style="color:${PC[tc.priority]}">${['⚪','🔵','🟠','🔴'][tc.priority]}</span></div>
+    <div class="cf" style="padding-left:10px">
+      <div class="ci-id">${esc(tc.id)}</div>
       <div class="ci-s">${esc(tc.summary)}</div>
-      <div class="ci-m">${CATEGORY[tc.category]||'Other'} · ${tc.steps.length} steps · ${fmtD(getElapsed(tc.id))}</div>
+      <div class="ci-m">${CATEGORY[tc.category]||'Other'} · ${tc.steps.length} steps</div>
     </div>
   </div>`).join('');
 }
@@ -737,10 +736,7 @@ function renderDetail(){
     <div class="dm">
       <select class="cs" onchange="uf('${tc.id}','priority',+this.value)">${PRIORITY.map((p,i)=>`<option value="${i}"${tc.priority===i?' selected':''}>${p}</option>`).join('')}</select>
       <select class="cs" onchange="uf('${tc.id}','category',+this.value)">${CATEGORY.map((c,i)=>`<option value="${i}"${tc.category===i?' selected':''}>${c}</option>`).join('')}</select>
-      <span class="sc" style="background:${SC[tc.status]}22;color:${SC[tc.status]}">${STATUS[tc.status]}</span>
-      ${tc.lastRunAt?`<span style="font-size:10px;color:var(--muted)">Last: ${tc.lastRunAt}</span>`:''}
     </div>
-    ${hasFail?`<div class="fail-info"><div class="fr-lbl">FAILURE DETAILS</div><div style="margin-bottom:3px">${esc(tc.failReason)}</div>${tc.bugLink?`<a href="${esc(tc.bugLink)}" target="_blank">🔗 ${esc(tc.bugLink)}</a>`:''}</div>`:''}
     <div class="ab" style="justify-content:flex-end">
       <button class="btn del" onclick="deleteCase('${tc.id}')">🗑 Delete Case</button>
     </div>
@@ -755,7 +751,6 @@ function renderStep(tcId,s,i){
     <div class="sn">STEP ${s.order}</div>
     <div class="sf"><label>Action / Description</label><textarea rows="2" oninput="us('${tcId}',${i},'description',this.value)">${esc(s.description)}</textarea></div>
     <div class="sf"><label>Expected Result</label><textarea rows="2" oninput="us('${tcId}',${i},'expectedResult',this.value)">${esc(s.expectedResult)}</textarea></div>
-    <div class="sf"><label>Actual Result</label><textarea rows="1" oninput="us('${tcId}',${i},'actualResult',this.value)">${esc(s.actualResult||'')}</textarea></div>
     <div class="sa" style="justify-content:flex-end">
       <button class="sb" onclick="removeStep('${tcId}',${i})" style="background:rgba(239,68,68,.1);color:var(--fail)">✕ Remove Step</button>
     </div>
