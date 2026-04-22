@@ -264,14 +264,6 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
             <input type="checkbox" id="sel-all-cb" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" onchange="toggleSelectAll(this.checked)" title="Select all in view">
             <div class="sw" style="flex:1;margin-bottom:0"><input id="sinp" type="text" placeholder="Search…" oninput="renderList()"></div>
           </div>
-          <div class="fr" style="margin-bottom:0">
-            <button class="fb on" onclick="setFilter(-1,this)">All</button>
-            <button class="fb" onclick="setFilter(0,this)">Untested</button>
-            <button class="fb" onclick="setFilter(1,this)">In Progress</button>
-            <button class="fb" onclick="setFilter(2,this)">Pass</button>
-            <button class="fb" onclick="setFilter(3,this)">Fail</button>
-            <button class="fb" onclick="setFilter(4,this)">Blocked</button>
-            <button class="fb" onclick="setFilter(5,this)">Skip</button>
           </div>
           <div id="bulk-bar" style="display:none;align-items:center;gap:7px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)">
             <span id="bulk-cnt" style="font-size:11px;color:var(--muted);flex:1"></span>
@@ -436,7 +428,7 @@ function showUnlockScreen(){
   if (lastProfile) {
     const ini = lastProfile.name ? lastProfile.name.charAt(0).toUpperCase() : '?';
     profileHtml = `
-      <div style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--accent);border-radius:8px;padding:12px;margin-bottom:16px;cursor:pointer" onclick="document.getElementById('tk-name').value='${esc(lastProfile.name)}';document.getElementById('tk-email').value='${esc(lastProfile.email)}';document.getElementById('tk-input').focus();">
+      <div style="display:flex;align-items:center;gap:12px;background:var(--card2);border:1px solid var(--accent);border-radius:8px;padding:12px;margin-bottom:16px;cursor:pointer" onclick="unlockApp(true)">
         <div style="width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;flex-shrink:0">${ini}</div>
         <div style="flex:1;overflow:hidden">
           <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Log in as ${esc(lastProfile.name)}</div>
@@ -457,10 +449,22 @@ function showUnlockScreen(){
     </div></div>`;
   document.body.appendChild(d);
 }
-async function unlockApp(){
+async function unlockApp(useLastProfile = false){
   const tk = document.getElementById('tk-input').value;
-  const nm = document.getElementById('tk-name').value.trim();
-  const em = document.getElementById('tk-email').value.trim();
+  let nm = document.getElementById('tk-name').value.trim();
+  let em = document.getElementById('tk-email').value.trim();
+  
+  if (useLastProfile === true) {
+    try {
+      const lastProfile = JSON.parse(localStorage.getItem('tcm_last_profile'));
+      if (lastProfile) { nm = lastProfile.name; em = lastProfile.email; }
+    } catch(e) {}
+    if (!tk) {
+      document.getElementById('tk-input').focus();
+      return; // Just focus if key is missing, no alert
+    }
+  }
+
   if(!tk || !nm || !em) { alert('Please fill in all fields.'); return; }
 
   const btn = document.getElementById('tk-btn') || document.querySelector('#unlock-modal .cb.pr');
