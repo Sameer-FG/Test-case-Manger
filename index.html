@@ -229,6 +229,17 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
     <button class="hbtn" onclick="openImportJSON()">↓ Import JSON</button>
     <button class="hbtn" onclick="exportJSON()">↑ Export JSON</button>
     <button class="hbtn ac" onclick="createCase()">＋ New Case</button>
+    <div id="user-profile-widget" style="display:none;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 10px 4px 6px;cursor:pointer;position:relative" onclick="toggleProfileMenu()">
+      <div id="upw-avatar" style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:12px;flex-shrink:0">?</div>
+      <div style="max-width:110px;overflow:hidden">
+        <div id="upw-name" style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        <div id="upw-email" style="font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      </div>
+      <div id="upw-menu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:6px;min-width:160px;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.4)">
+        <button onclick="event.stopPropagation();showSwitchAccount()" style="width:100%;text-align:left;padding:7px 10px;background:none;border:none;color:var(--text);cursor:pointer;border-radius:5px;font-size:12px;font-family:inherit" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">🔄 Switch Account</button>
+        <button onclick="event.stopPropagation();logoutUser()" style="width:100%;text-align:left;padding:7px 10px;background:none;border:none;color:var(--fail);cursor:pointer;border-radius:5px;font-size:12px;font-family:inherit" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='none'">🚪 Logout</button>
+      </div>
+    </div>
   </div>
   <!-- Nav tabs -->
   <div id="nav">
@@ -330,7 +341,10 @@ async function pingServer(){
     renderProfile();
   }catch{document.getElementById('srv-dot').style.background='var(--fail)';} 
 }
-setInterval(pingServer,15000); pingServer();
+setInterval(pingServer,15000); 
+// Show profile immediately from saved localStorage state (before any network call)
+renderProfile();
+pingServer();
 
 // ── Real-time Polling Sync ──
 function startPolling(){
@@ -354,28 +368,25 @@ function startPolling(){
 function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} }
 
 function renderProfile() {
-  let el = document.getElementById('user-profile-widget');
-  if(!el) {
-    el = document.createElement('div'); el.id = 'user-profile-widget';
-    el.style.cssText = "position:absolute;bottom:15px;left:15px;right:15px;background:var(--card2);border-radius:8px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.15);overflow:hidden";
-    document.querySelector('.sb').appendChild(el);
-  }
+  const widget = document.getElementById('user-profile-widget');
+  if(!widget) return;
   if(userProfile) {
     const ini = userProfile.name ? userProfile.name.charAt(0).toUpperCase() : '?';
-    el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px">
-        <div style="width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;flex-shrink:0">${ini}</div>
-        <div style="flex:1;overflow:hidden">
-          <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(userProfile.name)}</div>
-          <div style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px">${esc(userProfile.email)}</div>
-        </div>
-      </div>
-      <div style="border-top:1px solid rgba(255,255,255,.06);display:flex">
-        <button onclick="showSwitchAccount()" style="flex:1;padding:7px;font-size:11px;background:none;border:none;color:var(--muted);cursor:pointer" title="Switch account">🔄 Switch</button>
-        <button onclick="logoutUser()" style="flex:1;padding:7px;font-size:11px;background:none;border:none;color:var(--fail);cursor:pointer" title="Log out">🚪 Logout</button>
-      </div>`;
-    el.style.display='block';
-  } else { el.style.display='none'; }
+    document.getElementById('upw-avatar').textContent = ini;
+    document.getElementById('upw-name').textContent = userProfile.name;
+    document.getElementById('upw-email').textContent = userProfile.email;
+    widget.style.display = 'flex';
+  } else {
+    widget.style.display = 'none';
+  }
+}
+function toggleProfileMenu() {
+  const menu = document.getElementById('upw-menu');
+  if(!menu) return;
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+  if(menu.style.display === 'block') {
+    setTimeout(() => document.addEventListener('click', ()=>menu.style.display='none', {once:true}), 10);
+  }
 }
 function logoutUser(){
   if(!confirm('Log out? You will need the Team Key to log back in.'))return;
@@ -1142,6 +1153,7 @@ function closeModal(){document.getElementById('mbg').style.display='none';}
 function renderAll(){renderProjSel();renderList();}
 
 // ── Init ──
+renderProfile(); // Paint profile badge immediately from localStorage
 load().then(()=>{
   startPolling();
   const sp=new URLSearchParams(window.location.search);
