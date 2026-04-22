@@ -316,32 +316,58 @@ let generatedCases=[], genSelected=[], _failCb=null;
 
 // ── Server & Auth ──
 let teamKey = localStorage.getItem('tcm_team_key')||'';
+let userProfile = null;
+try { userProfile = JSON.parse(localStorage.getItem('tcm_profile')||'null'); } catch(e){}
+
 async function pingServer(){ 
   if(!IS_SERVER)return; 
   try{
     const r=await fetch('/api/check-auth', {headers:{'Authorization': teamKey}});
     const d=await r.json();
-    if(d.locked && !d.ok) { showUnlockScreen(); }
+    if(d.locked && !d.ok) { showUnlockScreen(); } else { renderProfile(); }
     document.getElementById('srv-dot').style.background=r.ok?'var(--pass)':'var(--fail)';
   }catch{document.getElementById('srv-dot').style.background='var(--fail)';} 
 }
 setInterval(pingServer,15000); pingServer();
 
+function renderProfile() {
+  let el = document.getElementById('user-profile-widget');
+  if(!el) {
+    el = document.createElement('div'); el.id = 'user-profile-widget';
+    el.style.cssText = "position:absolute;bottom:15px;left:15px;right:15px;background:var(--card2);padding:10px;border-radius:6px;display:flex;align-items:center;gap:10px;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.1)";
+    document.querySelector('.sb').appendChild(el);
+  }
+  if(userProfile) {
+    const ini = userProfile.name ? userProfile.name.charAt(0).toUpperCase() : '?';
+    el.innerHTML = `<div style="width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px">${ini}</div>
+    <div style="flex:1;overflow:hidden"><div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(userProfile.name)}</div><div style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px">${esc(userProfile.email)}</div></div>`;
+    el.style.display='flex';
+  } else { el.style.display='none'; }
+}
+
 function showUnlockScreen(){
   if(document.getElementById('unlock-modal')) return;
   const d = document.createElement('div'); d.id='unlock-modal';
   d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)";
-  d.innerHTML=`<div class="modal" style="width:340px;text-align:center"><div class="mh"><h2>🔒 Team Access Restricted</h2></div>
-    <div class="mb"><p style="font-size:13px;color:var(--muted);margin-bottom:15px">This QA repository requires your organization's Team Key.</p>
-    <input id="tk-input" class="fi2" type="password" placeholder="Enter Team Key" style="text-align:center;margin-bottom:15px">
-    <button class="cb pr" style="width:100%" onclick="unlockApp()">Unlock</button></div></div>`;
+  d.innerHTML=`<div class="modal" style="width:360px;text-align:left"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔒 Team Access Restricted</h2></div>
+    <div class="mb">
+      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" placeholder="Ask your admin for the key" value="${teamKey}"></div>
+      <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${userProfile?esc(userProfile.name):''}"></div>
+      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${userProfile?esc(userProfile.email):''}"></div>
+      <button class="cb pr" style="width:100%" onclick="unlockApp()">Unlock & Login</button>
+    </div></div>`;
   document.body.appendChild(d);
 }
 async function unlockApp(){
-  teamKey = document.getElementById('tk-input').value;
+  const tk = document.getElementById('tk-input').value;
+  const nm = document.getElementById('tk-name').value.trim();
+  const em = document.getElementById('tk-email').value.trim();
+  if(!tk || !nm || !em) { alert('Please fill in all fields.'); return; }
+  teamKey = tk; userProfile = { name: nm, email: em };
   localStorage.setItem('tcm_team_key', teamKey);
+  localStorage.setItem('tcm_profile', JSON.stringify(userProfile));
   document.getElementById('unlock-modal').remove();
-  pingServer(); load();
+  renderProfile(); pingServer(); load();
 }
 
 // ── Storage ──
@@ -380,6 +406,7 @@ async function load(){
     shadowRepo = JSON.parse(JSON.stringify(repo));
   }
   if(repo.projects.length>0)activeProject=repo.projects[0];
+  renderProfile();
 }
 
 // ── Navigation ──
@@ -601,10 +628,31 @@ function getRunStats(runId){
   return{total:run.caseIds.length,pass,fail,blocked,skip,notrun};
 }
 function isRunComplete(runId){const s=getRunStats(runId);return s.total>0&&s.notrun===0;}
+
+let runListTab = -1; // -1: All, 0: Ongoing, 1: Completed, 2: My Runs
+function setRunListTab(t,btn) { runListTab=t; document.querySelectorAll('.rlt-btn').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); renderRuns(); }
+
 function renderRuns(){
   const el=document.getElementById('run-items');
-  const runs=repo.testRuns.filter(r=>r.project===activeProject).slice().reverse();
-  if(!runs.length){el.innerHTML='<div class="emp">No test runs yet.<br>Press <b>＋ New Run</b> to create one.</div>';return;}
+  let runs=repo.testRuns.filter(r=>r.project===activeProject).slice().reverse();
+  
+  // Render Tabs
+  let listHead = document.getElementById('run-list-head');
+  if(!document.getElementById('rlt-tabs')) {
+    const d = document.createElement('div'); d.id='rlt-tabs'; d.className='fr'; d.style.cssText="margin:0 12px 10px 12px;justify-content:flex-start;overflow-x:auto";
+    d.innerHTML=`<button class="fb rlt-btn on" onclick="setRunListTab(-1,this)">All</button>
+      <button class="fb rlt-btn" onclick="setRunListTab(0,this)">Ongoing</button>
+      <button class="fb rlt-btn" onclick="setRunListTab(1,this)">Completed</button>
+      <button class="fb rlt-btn" onclick="setRunListTab(2,this)">My Runs</button>`;
+    listHead.parentNode.insertBefore(d, el);
+  }
+
+  // Filter
+  if(runListTab===0) runs=runs.filter(r=>!isRunComplete(r.id));
+  else if(runListTab===1) runs=runs.filter(r=>isRunComplete(r.id));
+  else if(runListTab===2 && userProfile) runs=runs.filter(r=>r.testerName===userProfile.name);
+
+  if(!runs.length){el.innerHTML='<div class="emp">No test runs match this filter.</div>';return;}
   el.innerHTML=runs.map(r=>{const s=getRunStats(r.id);const done=isRunComplete(r.id);const pct=s.total>0?Math.round((s.pass+s.fail+s.blocked+s.skip)/s.total*100):0;
     return`<div class="ri${r.id===selectedRunId?' on':''}" onclick="selectRun('${r.id}')">
       <div class="ri-name">${esc(r.name)}</div>
@@ -767,7 +815,7 @@ function openNewRunModal(){
       <div><span class="fl">VERSION *</span><input id="rn-ver" class="fi2" type="text" placeholder="e.g. 1.5.0"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <div><span class="fl">TESTER NAME</span><input id="rn-tester" class="fi2" type="text" placeholder="e.g. Jane Doe"></div>
+      <div><span class="fl">TESTER NAME</span><input id="rn-tester" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${userProfile?esc(userProfile.name):''}"></div>
       <div><span class="fl">DATE</span><input id="rn-date" class="fi2" type="date" value="${today}"></div>
     </div>
     <span class="fl">SELECT TEST CASES <span id="rn-count" style="color:var(--accent)">(${cases.length} selected)</span></span>
