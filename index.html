@@ -539,6 +539,12 @@ async function doSave(){
       const pl = { projects: repo.projects, categories: repo.categories, nextId: repo.nextId, nextRunId: repo.nextRunId, fullRepoFallback: repo };
       pl.updatedCases = repo.testCases.filter(c => JSON.stringify(c) !== JSON.stringify(shadowRepo.testCases.find(s=>s.id===c.id)));
       pl.updatedRuns = repo.testRuns.filter(r => JSON.stringify(r) !== JSON.stringify(shadowRepo.testRuns.find(s=>s.id===r.id)));
+      
+      const deletedCases = shadowRepo.testCases.filter(s => !repo.testCases.find(c => c.id === s.id)).map(s => s.id);
+      const deletedRuns = shadowRepo.testRuns.filter(s => !repo.testRuns.find(r => r.id === s.id)).map(s => s.id);
+      if(deletedCases.length > 0) pl.deletedCases = deletedCases;
+      if(deletedRuns.length > 0) pl.deletedRuns = deletedRuns;
+      
       pl.updatedResults = {};
       let resultsChanged=false;
       for (const runId in repo.runResults) { if(JSON.stringify(repo.runResults[runId]) !== JSON.stringify(shadowRepo.runResults[runId])) { pl.updatedResults[runId]=repo.runResults[runId]; resultsChanged=true; } }
@@ -867,8 +873,17 @@ function createCase(){
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);switchView('cases');
 }
 function deleteCase(id){if(!confirm('Delete this test case?'))return;repo.testCases=repo.testCases.filter(x=>x.id!==id);selectedId='';save();renderAll();}
-function addStep(tcId){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.push({order:tc.steps.length+1,description:'',expectedResult:'',actualResult:'',status:0});save();renderDetail();}
-function removeStep(tcId,i){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.splice(i,1);tc.steps.forEach((s,j)=>s.order=j+1);save();renderDetail();}
+
+function syncStepDOM(tcId) {
+  const tc = repo.testCases.find(x=>x.id===tcId); if(!tc)return;
+  const descAreas = document.querySelectorAll(`textarea[oninput*="'description'"]`);
+  const expAreas = document.querySelectorAll(`textarea[oninput*="'expectedResult'"]`);
+  descAreas.forEach((ta, idx) => { if(tc.steps[idx]) tc.steps[idx].description = ta.value; });
+  expAreas.forEach((ta, idx) => { if(tc.steps[idx]) tc.steps[idx].expectedResult = ta.value; });
+}
+
+function addStep(tcId){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.push({order:tc.steps.length+1,description:'',expectedResult:'',actualResult:'',status:0});save();renderDetail();}
+function removeStep(tcId,i){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.splice(i,1);tc.steps.forEach((s,j)=>s.order=j+1);save();renderDetail();}
 function uf(tcId,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc[field]=typeof tc[field]==='number'?+val:val;save();renderList();}
 function us(tcId,i,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps[i][field]=val;save();}
 function markCase(tcId,status){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=status;tc.lastRunAt=now();if(status!==3){tc.failReason='';tc.bugLink='';}save();renderAll();selectCase(tcId);}

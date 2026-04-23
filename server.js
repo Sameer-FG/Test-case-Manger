@@ -109,6 +109,11 @@ app.post('/api/sync', async (req, res) => {
         updatedCases.forEach(c => { const doc={...c}; delete doc._id; bulk.find({ id: c.id }).upsert().updateOne({ $set: doc }); });
         await bulk.execute();
       }
+      // Delete Cases
+      if (req.body.deletedCases && req.body.deletedCases.length) {
+        await db.collection('testCases').deleteMany({ id: { $in: req.body.deletedCases } });
+      }
+      
       // Upsert Runs
       if (updatedRuns && updatedRuns.length) {
         const bulk = db.collection('testRuns').initializeUnorderedBulkOp();
@@ -123,6 +128,13 @@ app.post('/api/sync', async (req, res) => {
           await db.collection('runResults').updateOne({ id: runId }, { $set: { data: merged } }, { upsert: true });
         }
       }
+      
+      // Delete Runs
+      if (req.body.deletedRuns && req.body.deletedRuns.length) {
+        await db.collection('testRuns').deleteMany({ id: { $in: req.body.deletedRuns } });
+        await db.collection('runResults').deleteMany({ id: { $in: req.body.deletedRuns } });
+      }
+      
       res.json({ ok: true });
     } else {
       // Local file fallback — MERGE, never overwrite
