@@ -264,6 +264,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
           <div style="display:flex;gap:7px;align-items:center;margin-bottom:7px">
             <input type="checkbox" id="sel-all-cb" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" onchange="toggleSelectAll(this.checked)" title="Select all in view">
             <div class="sw" style="flex:1;margin-bottom:0"><input id="sinp" type="text" placeholder="Search…" oninput="renderList()"></div>
+            <button class="tbtn" style="font-size:12px;padding:4px 8px;background:var(--card2)" onclick="findDuplicates()" title="Find Duplicates">👯</button>
           </div>
           <div id="bulk-bar" style="display:none;align-items:center;gap:7px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)">
             <span id="bulk-cnt" style="font-size:11px;color:var(--muted);flex:1"></span>
@@ -822,6 +823,68 @@ function deleteSelectedCases(){
   selectedCases.clear();
   if(!repo.testCases.find(x=>x.id===selectedId))selectedId='';
   save();renderAll();renderDashboard();
+}
+
+function findDuplicates() {
+  if(!activeProject){alert('Please select a project first.');return;}
+  const cases = repo.testCases.filter(tc => tc.project === activeProject);
+  const groups = {};
+  cases.forEach(tc => {
+    const norm = tc.summary.toLowerCase().replace(/\\s+/g, ' ').trim();
+    if(!groups[norm]) groups[norm] = [];
+    groups[norm].push(tc);
+  });
+  
+  const dups = Object.entries(groups).filter(([_, arr]) => arr.length > 1);
+  if(dups.length === 0) {
+    alert('No duplicate test cases found in this project! 🎉');
+    return;
+  }
+  
+  let html = `<div class="mh"><h2>👯 Find Duplicates</h2><button class="mc" onclick="closeModal()">✕</button></div><div class="mb" style="max-height:60vh;overflow-y:auto">`;
+  html += `<p style="font-size:13px;color:var(--muted);margin-bottom:16px">Found <b>${dups.length}</b> group(s) of duplicates. The oldest case is kept unchecked by default.</p>`;
+  
+  let totalDups = 0;
+  dups.forEach(([norm, arr]) => {
+    // Sort by ID to try to keep the oldest one
+    arr.sort((a,b) => a.id.localeCompare(b.id));
+    html += `<div style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:12px">`;
+    html += `<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--txt)">${esc(arr[0].summary)}</div>`;
+    
+    arr.forEach((tc, idx) => {
+      const isChecked = idx > 0; // Check all except the first one
+      if (isChecked) totalDups++;
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px">
+        <input type="checkbox" class="dup-cb" value="${tc.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer;accent-color:var(--fail)">
+        <span style="color:var(--accent);width:50px">${tc.id}</span>
+        <span style="color:var(--dim);width:70px">📂 ${esc(tc.category||'Other')}</span>
+        <span style="color:var(--muted)">${tc.steps.length} steps</span>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div>
+  <div class="mf">
+    <button class="cb gh" onclick="closeModal()">Cancel</button>
+    <button class="cb danger" onclick="deleteDuplicates()">🗑 Delete Selected</button>
+  </div>`;
+  
+  showModal(html, true);
+}
+
+function deleteDuplicates() {
+  const cbs = document.querySelectorAll('.dup-cb:checked');
+  if(cbs.length === 0) { alert('No test cases selected for deletion.'); return; }
+  if(!confirm(\`Delete \${cbs.length} selected duplicate test case(s)? This cannot be undone.\`)) return;
+  
+  const toDelete = new Set(Array.from(cbs).map(cb => cb.value));
+  repo.testCases = repo.testCases.filter(tc => !toDelete.has(tc.id));
+  if(toDelete.has(selectedId)) selectedId = '';
+  
+  // Also remove from selectedCases if any were selected in the main UI
+  toDelete.forEach(id => selectedCases.delete(id));
+  
+  save();renderAll();renderDashboard();closeModal();
 }
 
 // ── Test Case Detail ──
