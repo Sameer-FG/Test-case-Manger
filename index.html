@@ -724,6 +724,34 @@ function renderList(){
     return catHtml + itemsHtml;
   }).join('');
 }
+function renderCaseHistory(tcId) {
+  const historyRuns = repo.testRuns.filter(r => r.caseIds.includes(tcId)).sort((a,b) => new Date(b.date) - new Date(a.date));
+  if (historyRuns.length === 0) return `<div style="font-size:12px;color:var(--muted)">No execution history yet.</div>`;
+  
+  return historyRuns.map(r => {
+    const res = repo.runResults[r.id] && repo.runResults[r.id][tcId];
+    const st = res ? res.status : 0;
+    const isFail = st === 3;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;">
+      <span style="color:${SC[st]};width:65px;font-weight:600">${STATUS[st]}</span>
+      <span style="color:var(--dim);width:75px">${r.date}</span>
+      <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)} <span style="color:var(--dim)">v${esc(r.version)}</span></span>
+      ${isFail && res.failReason ? `<span style="color:var(--fail);font-size:11px;cursor:help" title="${esc(res.failReason)}">📄 Reason</span>` : ''}
+    </div>`;
+  }).join('');
+}
+function toggleHistory(elId, btnId) {
+  const el = document.getElementById(elId);
+  const btn = document.getElementById(btnId);
+  if(!el||!btn)return;
+  if (el.style.display === 'none') {
+    el.style.display = 'block';
+    btn.innerHTML = '▼ Execution History';
+  } else {
+    el.style.display = 'none';
+    btn.innerHTML = '▶ Execution History';
+  }
+}
 function toggleCaseSel(id){if(selectedCases.has(id))selectedCases.delete(id);else selectedCases.add(id);renderList();}
 function toggleSelectAll(chk){
   const cases=filteredCases();
@@ -761,6 +789,12 @@ function renderDetail(){
     </div>
     <div class="ab" style="justify-content:flex-end">
       <button class="btn del" onclick="deleteCase('${tc.id}')">🗑 Delete Case</button>
+    </div>
+    <div style="margin:14px 0;background:var(--card2);border-radius:6px;border:1px solid var(--border);padding:10px">
+      <div id="hist-btn-${tc.id}" style="font-size:12px;font-weight:600;color:var(--dim);cursor:pointer;user-select:none" onclick="toggleHistory('hist-${tc.id}', 'hist-btn-${tc.id}')">▶ Execution History</div>
+      <div id="hist-${tc.id}" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+        ${renderCaseHistory(tc.id)}
+      </div>
     </div>
     <div class="sl">Steps (${tc.steps.length})</div>
     ${tc.steps.map((s,i)=>renderStep(tc.id,s,i)).join('')}
@@ -929,6 +963,12 @@ function renderRunDetail(){
           <span class="rcr-id">${esc(tc.id)}</span>
           <span class="rcr-sum">${esc(tc.summary)}</span>
           <span class="rcr-status" style="color:${SC[st]}">${STATUS[st]}</span>
+        </div>
+        <div style="margin:8px 0 12px 0;background:rgba(0,0,0,0.2);border-radius:6px;border:1px solid var(--border);padding:10px">
+          <div id="run-hist-btn-${run.id}-${tc.id}" style="font-size:11px;font-weight:600;color:var(--dim);cursor:pointer;user-select:none" onclick="toggleHistory('run-hist-${run.id}-${tc.id}', 'run-hist-btn-${run.id}-${tc.id}')">▶ Execution History</div>
+          <div id="run-hist-${run.id}-${tc.id}" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+            ${renderCaseHistory(tc.id)}
+          </div>
         </div>
         <div class="rcr-steps" style="margin-bottom:12px;padding:8px;background:rgba(0,0,0,.15);border-radius:6px">
           ${tc.steps.map((s, idx) => `<div style="font-size:11px;margin-bottom:6px"><b style="color:var(--muted)">${idx+1}.</b> ${esc(s.description)} <span style="color:var(--dim)">→</span> <span style="color:var(--pass)">${esc(s.expectedResult)}</span></div>`).join('')}
