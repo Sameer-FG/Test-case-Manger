@@ -312,6 +312,12 @@ const IS_SERVER = window.location.protocol !== 'file:';
 let repo = { projects:[], testCases:[], testRuns:[], runResults:{}, nextId:1, nextRunId:1, autoScannedProjects:[] };
 let activeProject='', selectedId='', selectedRunId='', filterStatus=-1, timers={};
 let selectedCases=new Set();
+let collapsedCategories = new Set();
+function toggleMainCategory(cat) {
+  if (collapsedCategories.has(cat)) collapsedCategories.delete(cat);
+  else collapsedCategories.add(cat);
+  renderList();
+}
 let runFilterStatus=-1;
 let generatedCases=[], genSelected=[], _failCb=null;
 
@@ -693,14 +699,30 @@ function renderList(){
   if(selAllCb)selAllCb.checked=cases.length>0&&cases.every(tc=>selectedCases.has(tc.id));
   updateBulkBar();
   if(!cases.length){el.innerHTML=`<div class="emp">No cases found.<br>Press <b>＋ New Case</b> or <b>⚡ Generate</b>.</div>`;return;}
-  el.innerHTML=cases.map(tc=>`<div class="ci${tc.id===selectedId?' on':''}" onclick="selectCase('${tc.id}')">
-    <input type="checkbox" class="case-cb" style="accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex-shrink:0" ${selectedCases.has(tc.id)?'checked':''} onclick="event.stopPropagation();toggleCaseSel('${tc.id}')">
-    <div class="cf" style="padding-left:10px">
-      <div class="ci-id">${esc(tc.id)}</div>
-      <div class="ci-s">${esc(tc.summary)}</div>
-      <div class="ci-m">${CATEGORY[tc.category]||'Other'} · ${tc.steps.length} steps</div>
-    </div>
-  </div>`).join('');
+  
+  const byCategory={};
+  for(const tc of cases){const c=CATEGORY[tc.category]||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
+  
+  el.innerHTML = Object.entries(byCategory).map(([cat, tcs]) => {
+    const isCollapsed = collapsedCategories.has(cat);
+    const catHtml = `<div class="cat-header" style="padding:10px 14px;background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:1px;cursor:pointer;display:flex;align-items:center;position:sticky;top:0;z-index:2" onclick="toggleMainCategory('${esc(cat)}')">
+      <span style="flex:1">📂 ${esc(cat)} (${tcs.length})</span>
+      <span style="font-size:10px;transition:transform 0.2s;transform:${isCollapsed?'rotate(-90deg)':'rotate(0)'}">▼</span>
+    </div>`;
+    
+    if (isCollapsed) return catHtml;
+    
+    const itemsHtml = tcs.map(tc=>`<div class="ci${tc.id===selectedId?' on':''}" onclick="selectCase('${tc.id}')">
+      <input type="checkbox" class="case-cb" style="accent-color:var(--accent);width:14px;height:14px;cursor:pointer;flex-shrink:0" ${selectedCases.has(tc.id)?'checked':''} onclick="event.stopPropagation();toggleCaseSel('${tc.id}')">
+      <div class="cf" style="padding-left:10px">
+        <div class="ci-id">${esc(tc.id)}</div>
+        <div class="ci-s">${esc(tc.summary)}</div>
+        <div class="ci-m">${tc.steps.length} steps</div>
+      </div>
+    </div>`).join('');
+    
+    return catHtml + itemsHtml;
+  }).join('');
 }
 function toggleCaseSel(id){if(selectedCases.has(id))selectedCases.delete(id);else selectedCases.add(id);renderList();}
 function toggleSelectAll(chk){
