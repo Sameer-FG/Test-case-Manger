@@ -44,12 +44,12 @@ app.get('/api/check-auth', (req, res) => res.json({ locked: !!TEAM_KEY, ok: req.
 app.get('/api/repo', async (_, res) => {
   try {
     if (db) {
-      const meta = await db.collection('meta').findOne({ id: 'main' }) || { projects: [], nextId: 1, nextRunId: 1 };
+      const meta = await db.collection('meta').findOne({ id: 'main' }) || { projects: [], categories: [], nextId: 1, nextRunId: 1 };
       const testCases = await db.collection('testCases').find({}).toArray();
       const testRuns = await db.collection('testRuns').find({}).toArray();
       const runResultsArr = await db.collection('runResults').find({}).toArray();
       const runResults = {}; runResultsArr.forEach(r => runResults[r.id] = r.data);
-      res.json({ projects: meta.projects||[], nextId: meta.nextId||1, nextRunId: meta.nextRunId||1, testCases, testRuns, runResults });
+      res.json({ projects: meta.projects||[], categories: meta.categories||[], nextId: meta.nextId||1, nextRunId: meta.nextRunId||1, testCases, testRuns, runResults });
     } else {
       if (!fs.existsSync(DATA_FILE)) return res.json({ projects: [], testCases: [], testRuns: [], runResults: {}, nextId: 1, nextRunId: 1 });
       res.json(JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')));
@@ -86,6 +86,7 @@ function mergeRepos(existing, incoming) {
     runResults,
     nextId: Math.max(existing.nextId||1, incoming.nextId||1),
     nextRunId: Math.max(existing.nextRunId||1, incoming.nextRunId||1),
+    categories: incoming.categories || existing.categories || [],
     autoScannedProjects: [...new Set([...(existing.autoScannedProjects||[]), ...(incoming.autoScannedProjects||[])])]
   };
 }
@@ -93,25 +94,15 @@ function mergeRepos(existing, incoming) {
 // Sync Granular Changes — always merges, never overwrites
 app.post('/api/sync', async (req, res) => {
   try {
-    const { projects, nextId, nextRunId, updatedCases, updatedRuns, updatedResults, fullRepoFallback } = req.body;
+    const { projects, categories, nextId, nextRunId, updatedCases, updatedRuns, updatedResults, fullRepoFallback } = req.body;
     if (db) {
       // Projects: $addToSet so we never lose a teammate's project
-      if (projects && projects.length) {
-        await db.collection('meta').updateOne(
-          { id: 'main' },
-          {
-            $set: { nextId: nextId||1, nextRunId: nextRunId||1 },
-            $addToSet: { projects: { $each: projects } }
-          },
-          { upsert: true }
-        );
-      } else if (nextId || nextRunId) {
-        await db.collection('meta').updateOne(
-          { id: 'main' },
-          { $set: { nextId: nextId||1, nextRunId: nextRunId||1 } },
-          { upsert: true }
-        );
-      }
+      // Categories: $set so we can support renaming and deleting
+      const updateObj = { $set: { nextId: nextId||1, nextRunId: nextRunId||1 } };
+      if (categories && categories.length) updateObj.$set.categories = categories;
+      if (projects && projects.length) updateObj.$addToSet = { projects: { $each: projects } };
+      
+      await db.collection('meta').updateOne({ id: 'main' }, updateObj, { upsert: true });
       // Upsert Cases
       if (updatedCases && updatedCases.length) {
         const bulk = db.collection('testCases').initializeUnorderedBulkOp();

@@ -222,6 +222,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
     <span class="pl">Project:</span>
     <select id="proj-sel" onchange="setProject(this.value)"></select>
     <button class="hbtn" onclick="openProjModal()" title="Manage projects">📁</button>
+    <button class="hbtn" onclick="openFoldersModal()" title="Manage folders">⚙️ Folders</button>
     <span class="hsp"></span>
     <div class="srv-dot" id="srv-dot" style="background:var(--muted)" title="Server connection"></div>
     <button class="hbtn doc" onclick="openDocModal()">📄 Import Doc</button>
@@ -303,13 +304,12 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
 // ── Constants ──
 const STATUS   = ['Not Run','In Progress','Pass','Fail','Blocked','Skipped'];
 const PRIORITY = ['Low','Medium','High','Critical'];
-const CATEGORY = ['UI','Gameplay','Economy','Audio','Settings','Network','Performance','Analytics','Other'];
 const SC = ['var(--notrun)','var(--inprog)','var(--pass)','var(--fail)','var(--blocked)','var(--skip)'];
 const PC = ['var(--low)','var(--med)','var(--high)','var(--crit)'];
 const IS_SERVER = window.location.protocol !== 'file:';
 
 // ── State ──
-let repo = { projects:[], testCases:[], testRuns:[], runResults:{}, nextId:1, nextRunId:1, autoScannedProjects:[] };
+let repo = { projects:[], categories:[], testCases:[], testRuns:[], runResults:{}, nextId:1, nextRunId:1, autoScannedProjects:[] };
 let activeProject='', selectedId='', selectedRunId='', filterStatus=-1, timers={};
 let selectedCases=new Set();
 let collapsedCategories = new Set();
@@ -536,7 +536,7 @@ let _st; function save(){clearTimeout(_st);_st=setTimeout(doSave,300);}
 async function doSave(){
   if(IS_SERVER && shadowRepo){
     try{
-      const pl = { projects: repo.projects, nextId: repo.nextId, nextRunId: repo.nextRunId, fullRepoFallback: repo };
+      const pl = { projects: repo.projects, categories: repo.categories, nextId: repo.nextId, nextRunId: repo.nextRunId, fullRepoFallback: repo };
       pl.updatedCases = repo.testCases.filter(c => JSON.stringify(c) !== JSON.stringify(shadowRepo.testCases.find(s=>s.id===c.id)));
       pl.updatedRuns = repo.testRuns.filter(r => JSON.stringify(r) !== JSON.stringify(shadowRepo.testRuns.find(s=>s.id===r.id)));
       pl.updatedResults = {};
@@ -577,7 +577,16 @@ async function load(){
 function applyRepo(data){
   repo=data;
   if(!repo.projects)repo.projects=[];
+  if(!repo.categories||repo.categories.length===0)repo.categories=['UI','Gameplay','Economy','Audio','Settings','Network','Performance','Analytics','Other'];
   if(!repo.testCases)repo.testCases=[];
+  
+  // Migration for old test cases with integer categories
+  let migrated = false;
+  repo.testCases.forEach(tc => { 
+    if(typeof tc.category === 'number') { tc.category = repo.categories[tc.category] || 'Other'; migrated = true; }
+  });
+  if(migrated) setTimeout(doSave, 1000); // trigger save to persist migration to server
+
   if(!repo.testRuns)repo.testRuns=[];
   if(!repo.runResults)repo.runResults={};
   if(!repo.nextId)repo.nextId=1;
@@ -619,6 +628,43 @@ function openProjModal(){
 function renderProjItems(){return repo.projects.length===0?'<p style="color:var(--muted);font-size:12px;padding:8px 0">No projects yet.</p>':repo.projects.map(p=>`<div class="proj-item"><span class="pn" onclick="setProject('${esc(p)}');closeModal()">${esc(p)}</span><button class="pd" onclick="deleteProject('${esc(p)}')">🗑</button></div>`).join('');}
 function addProject(){const v=document.getElementById('npi').value.trim();if(!v||repo.projects.includes(v))return;repo.projects.push(v);activeProject=v;save();renderAll();renderRuns();renderDashboard();document.getElementById('pitems').innerHTML=renderProjItems();document.getElementById('npi').value='';}
 function deleteProject(p){if(!confirm(`Delete project "${p}" and ALL its data?`))return;repo.projects=repo.projects.filter(x=>x!==p);repo.testCases=repo.testCases.filter(tc=>tc.project!==p);repo.testRuns=repo.testRuns.filter(r=>r.project!==p);if(activeProject===p)activeProject=repo.projects[0]||'';save();renderAll();renderRuns();renderDashboard();document.getElementById('pitems').innerHTML=renderProjItems();}
+
+// ── Folders ──
+function openFoldersModal(){
+  showModal(`<div class="mh"><h2>⚙️ Manage Folders</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <span class="fl">NEW FOLDER</span>
+    <div style="display:flex;gap:8px;margin-bottom:14px"><input id="nfi" class="fi2" type="text" placeholder="e.g. Multiplayer" onkeydown="if(event.key==='Enter')addFolder()"><button class="cb pr" onclick="addFolder()">Add</button></div>
+    <span class="fl">EXISTING FOLDERS</span>
+    <div id="fitems">${renderFolderItems()}</div>
+  </div>`,true);
+}
+function renderFolderItems(){
+  return repo.categories.map((c,i)=>`<div class="proj-item" style="display:flex;align-items:center;gap:6px">
+    <input class="fi2" style="padding:4px 6px;margin:0;flex:1" type="text" id="fc-${i}" value="${esc(c)}">
+    <button class="tbtn" style="padding:4px 8px;font-size:11px;background:var(--card2)" onclick="renameFolder(${i}, document.getElementById('fc-${i}').value)">💾</button>
+    <button class="pd" onclick="deleteFolder(${i})">🗑</button>
+  </div>`).join('');
+}
+function addFolder() {
+  const v=document.getElementById('nfi').value.trim();if(!v||repo.categories.includes(v))return;
+  repo.categories.push(v);save();document.getElementById('fitems').innerHTML=renderFolderItems();document.getElementById('nfi').value='';renderAll();
+}
+function renameFolder(i, newName) {
+  newName=newName.trim();if(!newName||repo.categories.includes(newName))return;
+  const oldName = repo.categories[i];
+  repo.categories[i] = newName;
+  repo.testCases.forEach(tc => { if(tc.category === oldName) tc.category = newName; });
+  save();document.getElementById('fitems').innerHTML=renderFolderItems();renderAll();
+}
+function deleteFolder(i) {
+  const oldName = repo.categories[i];
+  if(!confirm(`Delete folder "${oldName}"? Test cases inside will be moved to "Other".`))return;
+  repo.categories.splice(i,1);
+  if (!repo.categories.includes('Other')) repo.categories.push('Other');
+  repo.testCases.forEach(tc => { if(tc.category === oldName) tc.category = 'Other'; });
+  save();document.getElementById('fitems').innerHTML=renderFolderItems();renderAll();
+}
 
 // ── Dashboard ──
 function renderDashboard(){
@@ -701,7 +747,7 @@ function renderList(){
   if(!cases.length){el.innerHTML=`<div class="emp">No cases found.<br>Press <b>＋ New Case</b> or <b>⚡ Generate</b>.</div>`;return;}
   
   const byCategory={};
-  for(const tc of cases){const c=CATEGORY[tc.category]||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
+  for(const tc of cases){const c=tc.category||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
   
   el.innerHTML = Object.entries(byCategory).map(([cat, tcs]) => {
     const isCollapsed = collapsedCategories.has(cat);
@@ -785,7 +831,7 @@ function renderDetail(){
     <div class="dh"><textarea id="sa" rows="1" oninput="ag(this);uf('${tc.id}','summary',this.value)" onfocus="ag(this)">${esc(tc.summary)}</textarea></div>
     <div class="dm">
       <select class="cs" onchange="uf('${tc.id}','priority',+this.value)">${PRIORITY.map((p,i)=>`<option value="${i}"${tc.priority===i?' selected':''}>${p}</option>`).join('')}</select>
-      <select class="cs" onchange="uf('${tc.id}','category',+this.value)">${CATEGORY.map((c,i)=>`<option value="${i}"${tc.category===i?' selected':''}>${c}</option>`).join('')}</select>
+      <select class="cs" onchange="uf('${tc.id}','category',this.value)">${repo.categories.map(c=>`<option value="${esc(c)}"${tc.category===c?' selected':''}>${esc(c)}</option>`).join('')}</select>
     </div>
     <div class="ab" style="justify-content:flex-end">
       <button class="btn del" onclick="deleteCase('${tc.id}')">🗑 Delete Case</button>
@@ -816,7 +862,7 @@ function renderStep(tcId,s,i){
 // ── CRUD ──
 function createCase(){
   if(!activeProject){alert('Please create a project first.');openProjModal();return;}
-  const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:0,status:0,failReason:'',bugLink:'',
+  const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
     steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0};
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);switchView('cases');
 }
@@ -1049,7 +1095,7 @@ function deleteRun(runId){
 // ── Shared Run Case List HTML ──
 function buildCaseListHtml(cases, selectedIds){
   const byCategory={};
-  for(const tc of cases){const c=CATEGORY[tc.category]||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
+  for(const tc of cases){const c=tc.category||'Other';if(!byCategory[c])byCategory[c]=[];byCategory[c].push(tc);}
   return Object.entries(byCategory).map(([cat,tcs])=>{
     const allChecked=tcs.every(tc=>selectedIds?selectedIds.includes(tc.id):true);
     return`<div class="cs-group-head" style="display:flex;align-items:center;gap:8px;cursor:pointer">
@@ -1193,7 +1239,7 @@ function runGenerate(){
 function tgGen(i){if(genSelected.includes(i))genSelected=genSelected.filter(x=>x!==i);else genSelected.push(i);const b=document.getElementById('addbtn');if(b)b.textContent=`✅ Add (${genSelected.length})`;}
 function addGenCases(){
   let firstId='';
-  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||0,status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0};repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
+  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||(repo.categories[0]||'Other'),status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0};repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
   save();closeModal();renderAll();if(firstId)selectCase(firstId);
 }
 function openDocModal(){
@@ -1383,7 +1429,7 @@ class TCMGenerator{
     let cur=null,lastStep=null,inThen=false;
     for(const line of lines){
       if(!line)continue;if(/^feature\s*[:-]/i.test(line))continue;
-      if(/^scenario\s*(outline\s*)?:/i.test(line)){if(cur)cases.push(cur);cur={summary:line.replace(/^scenario\s*(outline\s*)?:\s*/i,'').trim(),steps:[],priority:1,category:0};lastStep=null;inThen=false;}
+      if(/^scenario\s*(outline\s*)?:/i.test(line)){if(cur)cases.push(cur);cur={summary:line.replace(/^scenario\s*(outline\s*)?:\s*/i,'').trim(),steps:[],priority:1,category:repo.categories[0]||'Other'};lastStep=null;inThen=false;}
       else if(cur&&/^(given|when)\s+/i.test(line)){lastStep={description:line.replace(/^(given|when)\s+/i,'').trim(),expectedResult:''};cur.steps.push(lastStep);inThen=false;}
       else if(cur&&/^then\s+/i.test(line)){const r=line.replace(/^then\s+/i,'').trim();if(lastStep)lastStep.expectedResult=r;else cur.steps.push({description:'Observe',expectedResult:r});inThen=true;}
       else if(cur&&/^and\s+/i.test(line)){const r=line.replace(/^and\s+/i,'').trim();if(inThen&&lastStep)lastStep.expectedResult+=(lastStep.expectedResult?' ':'')+r;else{lastStep={description:r,expectedResult:''};cur.steps.push(lastStep);}}
@@ -1403,7 +1449,27 @@ class TCMGenerator{
     }
     return cases;
   }
-  cat(t){const lo=t.toLowerCase();if(/button|ui|screen|popup|menu|panel|dialog|click|tap|display/.test(lo))return 0;if(/coin|purchase|buy|economy|shop|store|price|payment|currency/.test(lo))return 2;if(/sound|audio|music|sfx|mute|volume/.test(lo))return 3;if(/setting|preference|config|option|language/.test(lo))return 4;if(/network|internet|connect|online|offline|api|server|sync/.test(lo))return 5;if(/fps|performance|lag|loading|speed|memory/.test(lo))return 6;if(/analytic|event|track|firebase|amplitude/.test(lo))return 7;if(/game|play|card|move|score|win|lose|level|board/.test(lo))return 1;return 8;}
+  cat(t){
+    const lo=t.toLowerCase();
+    const map = {
+      'UI': ['button','ui','screen','popup','menu','panel','dialog','click','tap','display'],
+      'Economy': ['coin','purchase','buy','economy','shop','store','price','payment','currency'],
+      'Audio': ['sound','audio','music','sfx','mute','volume'],
+      'Settings': ['setting','preference','config','option','language'],
+      'Network': ['network','internet','connect','online','offline','api','server','sync'],
+      'Performance': ['fps','performance','lag','loading','speed','memory'],
+      'Analytics': ['analytic','event','track','firebase','amplitude'],
+      'Gameplay': ['game','play','card','move','score','win','lose','level','board']
+    };
+    let foundCat = 'Other';
+    for (const [key, keywords] of Object.entries(map)) {
+      if (keywords.some(k => lo.includes(k))) { foundCat = key; break; }
+    }
+    const exactMatch = repo.categories.find(c => c.toLowerCase() === foundCat.toLowerCase());
+    if (exactMatch) return exactMatch;
+    for (const c of repo.categories) { if (lo.includes(c.toLowerCase())) return c; }
+    return repo.categories.includes('Other') ? 'Other' : (repo.categories[0] || 'Other');
+  }
   pri(t){const lo=t.toLowerCase();if(/critical|crash|fatal|security|data.?loss/.test(lo))return 3;if(/important|major|payment|login|auth/.test(lo))return 2;if(/minor|trivial|cosmetic|typo/.test(lo))return 0;return 1;}
 }
 </script>
