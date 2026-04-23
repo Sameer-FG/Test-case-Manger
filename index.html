@@ -893,7 +893,7 @@ function findDuplicates() {
   const cases = repo.testCases.filter(tc => tc.project === activeProject);
   const groups = {};
   cases.forEach(tc => {
-    const norm = tc.summary.toLowerCase().replace(/\\s+/g, ' ').trim();
+    const norm = tc.summary.toLowerCase().replace(/\s+/g, ' ').trim();
     if(!groups[norm]) groups[norm] = [];
     groups[norm].push(tc);
   });
@@ -938,7 +938,7 @@ function findDuplicates() {
 function deleteDuplicates() {
   const cbs = document.querySelectorAll('.dup-cb:checked');
   if(cbs.length === 0) { alert('No test cases selected for deletion.'); return; }
-  if(!confirm(\`Delete \${cbs.length} selected duplicate test case(s)? This cannot be undone.\`)) return;
+  if(!confirm(`Delete ${cbs.length} selected duplicate test case(s)? This cannot be undone.`)) return;
   
   const toDelete = new Set(Array.from(cbs).map(cb => cb.value));
   repo.testCases = repo.testCases.filter(tc => !toDelete.has(tc.id));
