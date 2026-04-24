@@ -912,16 +912,17 @@ function findDuplicates() {
     // Sort by ID to try to keep the oldest one
     arr.sort((a,b) => a.id.localeCompare(b.id));
     html += `<div style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:12px">`;
-    html += `<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--txt)">${esc(arr[0].summary)}</div>`;
+    html += `<div style="font-size:12px;font-weight:600;margin-bottom:8px;color:var(--text);border-bottom:1px solid rgba(255,255,255,0.05);padding-bottom:6px">Group: ${esc(arr[0].summary)}</div>`;
     
     arr.forEach((tc, idx) => {
       const isChecked = idx > 0; // Check all except the first one
       if (isChecked) totalDups++;
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px">
-        <input type="checkbox" class="dup-cb" value="${tc.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer;accent-color:var(--fail)">
-        <span style="color:var(--accent);width:50px">${tc.id}</span>
-        <span style="color:var(--dim);width:70px">📂 ${esc(tc.category||'Other')}</span>
-        <span style="color:var(--muted)">${tc.steps.length} steps</span>
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px;background:var(--card);padding:6px 8px;border-radius:4px;border:1px solid var(--border)">
+        <input type="checkbox" class="dup-cb" value="${tc.id}" ${isChecked ? 'checked' : ''} style="cursor:pointer;accent-color:var(--fail);flex-shrink:0">
+        <span style="color:var(--accent);width:45px;flex-shrink:0;font-weight:600">${tc.id}</span>
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)" title="${esc(tc.summary)}">${esc(tc.summary)}</span>
+        <span style="color:var(--dim);width:80px;flex-shrink:0;white-space:nowrap">📂 ${esc(tc.category||'Other')}</span>
+        <span style="color:var(--muted);width:50px;flex-shrink:0;text-align:right">${tc.steps.length} steps</span>
       </div>`;
     });
     html += `</div>`;
