@@ -393,16 +393,66 @@ renderProfile();
 pingServer();
 
 // ── Real-time Polling Sync ──
-function smartMerge(fresh, local) {
-  // Keep locally-created items that haven't synced to server yet
-  const freshCaseIds = new Set((fresh.testCases||[]).map(c=>c.id));
-  const localOnlyCases = (local.testCases||[]).filter(c=>!freshCaseIds.has(c.id));
-  const freshRunIds = new Set((fresh.testRuns||[]).map(r=>r.id));
-  const localOnlyRuns = (local.testRuns||[]).filter(r=>!freshRunIds.has(r.id));
+function smartMerge(fresh, local, shadow) {
+  if (!shadow) return fresh; // Fallback if no shadow repo
+  
+  // 3-way merge for test cases
+  const mergedCases = [];
+  const freshCases = new Map((fresh.testCases||[]).map(c=>[c.id, c]));
+  const shadowCases = new Map((shadow.testCases||[]).map(c=>[c.id, c]));
+  const localCases = new Map((local.testCases||[]).map(c=>[c.id, c]));
+  
+  // 1. Process local cases (keep local edits and local additions)
+  for(const lc of local.testCases||[]) {
+    const sc = shadowCases.get(lc.id);
+    const fc = freshCases.get(lc.id);
+    
+    // If locally changed (or brand new), keep local
+    if(!sc || JSON.stringify(lc) !== JSON.stringify(sc)) {
+      mergedCases.push(lc);
+    } else if(fc) {
+      // Unchanged locally, so take server's version (might have remote edits)
+      mergedCases.push(fc);
+    }
+  }
+  // 2. Add fresh cases that are completely new from server
+  for(const fc of fresh.testCases||[]) {
+    if(!localCases.has(fc.id) && !shadowCases.has(fc.id)) {
+      mergedCases.push(fc); // Was not deleted locally, it's genuinely new from server
+    }
+  }
+
+  // 3-way merge for test runs
+  const mergedRuns = [];
+  const freshRuns = new Map((fresh.testRuns||[]).map(r=>[r.id, r]));
+  const shadowRuns = new Map((shadow.testRuns||[]).map(r=>[r.id, r]));
+  const localRuns = new Map((local.testRuns||[]).map(r=>[r.id, r]));
+  
+  for(const lr of local.testRuns||[]) {
+    const sr = shadowRuns.get(lr.id);
+    const fr = freshRuns.get(lr.id);
+    if(!sr || JSON.stringify(lr) !== JSON.stringify(sr)) mergedRuns.push(lr);
+    else if(fr) mergedRuns.push(fr);
+  }
+  for(const fr of fresh.testRuns||[]) {
+    if(!localRuns.has(fr.id) && !shadowRuns.has(fr.id)) mergedRuns.push(fr);
+  }
+
+  // 3-way merge for results
+  const mergedResults = { ...(fresh.runResults||{}) };
+  for(const runId in local.runResults||{}) {
+    const lr = local.runResults[runId];
+    const sr = shadow.runResults ? shadow.runResults[runId] : null;
+    if(!sr || JSON.stringify(lr) !== JSON.stringify(sr)) {
+      mergedResults[runId] = lr; // keep local unsaved result
+    }
+  }
+
   return {
     ...fresh,
-    testCases: [...(fresh.testCases||[]), ...localOnlyCases],
-    testRuns: [...(fresh.testRuns||[]), ...localOnlyRuns],
+    testCases: mergedCases,
+    testRuns: mergedRuns,
+    runResults: mergedResults,
     nextId: Math.max(fresh.nextId||1, local.nextId||1),
     nextRunId: Math.max(fresh.nextRunId||1, local.nextRunId||1),
     categories: (fresh.categories&&fresh.categories.length) ? fresh.categories : (local.categories||[])
@@ -416,7 +466,7 @@ function startPolling(){
       const r = await fetch('/api/repo',{headers:{'Authorization':teamKey}});
       if(!r.ok) return;
       const fresh = await r.json();
-      const merged = smartMerge(fresh, repo);
+      const merged = smartMerge(fresh, repo, shadowRepo);
       const mergedStr = JSON.stringify(merged);
       const currentStr = JSON.stringify(repo);
       if(mergedStr !== currentStr){
@@ -443,7 +493,7 @@ async function forceSync() {
   if(btn) { btn.textContent = '⏳ Syncing...'; btn.style.opacity = '0.7'; btn.disabled = true; }
   
   // 1. Force flush any pending saves immediately
-  if(_saveTimer) { clearTimeout(_saveTimer); _saveTimer=null; }
+  if(typeof _st !== 'undefined' && _st) { clearTimeout(_st); _st=null; }
   await doSave();
   
   // 2. Fetch fresh repo from server
@@ -451,7 +501,7 @@ async function forceSync() {
     const r = await fetch('/api/repo',{headers:{'Authorization':teamKey}});
     if(r.ok){
       const fresh = await r.json();
-      const merged = smartMerge(fresh, repo);
+      const merged = smartMerge(fresh, repo, shadowRepo);
       const mergedStr = JSON.stringify(merged);
       if(mergedStr !== JSON.stringify(repo)){
         const savedProject = activeProject, savedId = selectedId, savedRunId = selectedRunId;
