@@ -964,6 +964,7 @@ function renderDetail(){
     <div class="dm">
       <select class="cs" onchange="uf('${tc.id}','priority',+this.value)">${PRIORITY.map((p,i)=>`<option value="${i}"${tc.priority===i?' selected':''}>${p}</option>`).join('')}</select>
       <select class="cs" onchange="uf('${tc.id}','category',this.value)">${repo.categories.map(c=>`<option value="${esc(c)}"${tc.category===c?' selected':''}>${esc(c)}</option>`).join('')}</select>
+      <span style="font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap" title="Added by">👤 ${esc(tc.createdBy || 'Unknown')}</span>
     </div>
     <div class="ab" style="justify-content:flex-end">
       <button class="btn del" onclick="deleteCase('${tc.id}')">🗑 Delete Case</button>
@@ -995,14 +996,14 @@ function renderStep(tcId,s,i){
 function createCase(){
   if(!activeProject){alert('Please create a project first.');openProjModal();return;}
   const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
-    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0};
+    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown'};
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);switchView('cases');
 }
 function deleteCase(id){if(!confirm('Delete this test case?'))return;repo.testCases=repo.testCases.filter(x=>x.id!==id);selectedId='';save();renderAll();}
 function createCaseInCategory(cat){
   if(!activeProject){alert('Please select a project first.');return;}
   const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:cat||repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
-    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0};
+    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown'};
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);
 }
 
@@ -1386,7 +1387,7 @@ function runGenerate(){
 function tgGen(i){if(genSelected.includes(i))genSelected=genSelected.filter(x=>x!==i);else genSelected.push(i);const b=document.getElementById('addbtn');if(b)b.textContent=`✅ Add (${genSelected.length})`;}
 function addGenCases(){
   let firstId='';
-  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||(repo.categories[0]||'Other'),status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0};repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
+  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||(repo.categories[0]||'Other'),status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown'};repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
   save();closeModal();renderAll();if(firstId)selectCase(firstId);
 }
 function openDocModal(){
