@@ -231,6 +231,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
     <select id="proj-sel" onchange="setProject(this.value)"></select>
     <button class="hbtn" onclick="openProjModal()" title="Manage projects">📁</button>
     <button class="hbtn" onclick="openFoldersModal()" title="Manage folders">⚙️ Folders</button>
+    <button class="hbtn" id="sync-btn" onclick="forceSync()" title="Force sync with server" style="background:var(--accent);color:#fff;border:none">🔄 Sync Now</button>
     <button class="hbtn" id="theme-btn" onclick="toggleTheme()" title="Toggle light/dark theme">🌙</button>
     <span class="hsp"></span>
     <div class="srv-dot" id="srv-dot" style="background:var(--muted)" title="Server connection"></div>
@@ -435,6 +436,41 @@ function startPolling(){
   }, 10000);
 }
 function stopPolling(){ if(_pollTimer){clearInterval(_pollTimer);_pollTimer=null;} }
+
+async function forceSync() {
+  if(!IS_SERVER) { alert('You are running entirely locally (no server running). Saves are instantaneous.'); return; }
+  const btn = document.getElementById('sync-btn');
+  if(btn) { btn.textContent = '⏳ Syncing...'; btn.style.opacity = '0.7'; btn.disabled = true; }
+  
+  // 1. Force flush any pending saves immediately
+  if(_saveTimer) { clearTimeout(_saveTimer); _saveTimer=null; }
+  await doSave();
+  
+  // 2. Fetch fresh repo from server
+  try{
+    const r = await fetch('/api/repo',{headers:{'Authorization':teamKey}});
+    if(r.ok){
+      const fresh = await r.json();
+      const merged = smartMerge(fresh, repo);
+      const mergedStr = JSON.stringify(merged);
+      if(mergedStr !== JSON.stringify(repo)){
+        const savedProject = activeProject, savedId = selectedId, savedRunId = selectedRunId;
+        applyRepo(merged);
+        if(savedProject && merged.projects.includes(savedProject)) activeProject = savedProject;
+        selectedId = savedId; selectedRunId = savedRunId;
+        renderAll(); renderRuns(); renderDashboard();
+        localStorage.setItem('tcm_repo', mergedStr);
+        shadowRepo = JSON.parse(mergedStr);
+      }
+    }
+  }catch(e){ console.error('Force sync error', e); }
+  
+  // 3. Reset UI
+  if(btn) { 
+    btn.textContent = '✅ Synced!'; 
+    setTimeout(() => { btn.textContent = '🔄 Sync Now'; btn.style.opacity = '1'; btn.disabled = false; }, 1500);
+  }
+}
 
 function renderProfile() {
   const widget = document.getElementById('user-profile-widget');
