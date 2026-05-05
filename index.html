@@ -274,6 +274,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
           <div style="display:flex;gap:7px;align-items:center;margin-bottom:7px">
             <input type="checkbox" id="sel-all-cb" style="width:14px;height:14px;cursor:pointer;accent-color:var(--accent)" onchange="toggleSelectAll(this.checked)" title="Select all in view">
             <div class="sw" style="flex:1;margin-bottom:0"><input id="sinp" type="text" placeholder="Search…" oninput="renderList()"></div>
+            <button class="tbtn" style="font-size:12px;padding:4px 8px;background:var(--card2)" onclick="exportCSV()" title="Export as CSV">⬇️</button>
             <button class="tbtn" style="font-size:12px;padding:4px 8px;background:var(--card2)" onclick="findDuplicates()" title="Find Duplicates">👯</button>
           </div>
           <div id="bulk-bar" style="display:none;align-items:center;gap:7px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)">
@@ -572,7 +573,6 @@ function showSwitchAccount(){
   d.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(10px)";
   d.innerHTML=`<div class="modal" style="width:360px"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔑 Login / Switch Account</h2></div>
     <div class="mb">
-      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" value="${oldKey}" placeholder="Team Key" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="Your full name" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="your@felicitygames.com" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <button class="cb pr" style="width:100%;margin-bottom:8px" onclick="unlockApp()">Login</button>
@@ -604,10 +604,9 @@ function showUnlockScreen(){
     `;
   }
 
-  d.innerHTML=`<div class="modal" style="width:360px;text-align:left"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔒 Team Access Restricted</h2></div>
+  d.innerHTML=`<div class="modal" style="width:360px;text-align:left"><div class="mh" style="margin-bottom:15px"><h2 style="text-align:center;width:100%">🔒 Login Required</h2></div>
     <div class="mb">
       ${profileHtml}
-      <div style="margin-bottom:12px"><span class="fl">TEAM KEY</span><input id="tk-input" class="fi2" type="password" placeholder="Ask your admin for the key" value="${teamKey}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${lastProfile?esc(lastProfile.name):''}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${lastProfile?esc(lastProfile.email):''}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <button id="tk-btn" class="cb pr" style="width:100%" onclick="unlockApp()">Unlock & Login</button>
@@ -615,48 +614,34 @@ function showUnlockScreen(){
   document.body.appendChild(d);
 }
 async function unlockApp(useLastProfile = false){
-  const tk = document.getElementById('tk-input').value;
-  let nm = document.getElementById('tk-name').value.trim();
-  let em = document.getElementById('tk-email').value.trim();
+  let nm = '';
+  let em = '';
   
   if (useLastProfile === true) {
     try {
       const lastProfile = JSON.parse(localStorage.getItem('tcm_last_profile'));
       if (lastProfile) { nm = lastProfile.name; em = lastProfile.email; }
     } catch(e) {}
-    if (!tk) {
-      document.getElementById('tk-input').focus();
-      return; // Just focus if key is missing, no alert
-    }
+  } else {
+    nm = document.getElementById('tk-name').value.trim();
+    em = document.getElementById('tk-email').value.trim();
   }
 
-  if(!tk || !nm || !em) { alert('Please fill in all fields.'); return; }
+  if(!nm || !em) { alert('Please enter your name and email.'); return; }
+  
+  if(!em.toLowerCase().endsWith('@felicitygames.com')) {
+    alert('Access restricted to @felicitygames.com email addresses.');
+    return;
+  }
 
   const btn = document.getElementById('tk-btn') || document.querySelector('#unlock-modal .cb.pr');
   const oldText = btn.textContent;
   btn.textContent = 'Verifying...';
   btn.disabled = true;
 
-  if(IS_SERVER) {
-    try {
-      const r = await fetch('/api/check-auth', {headers:{'Authorization': tk}});
-      const d = await r.json();
-      if(!d.ok) {
-        alert('Incorrect Team Key!');
-        btn.textContent = oldText;
-        btn.disabled = false;
-        return;
-      }
-    } catch(e) {
-      alert('Network error verifying key.');
-      btn.textContent = oldText;
-      btn.disabled = false;
-      return;
-    }
-  }
-
-  teamKey = tk; userProfile = { name: nm, email: em };
-  localStorage.setItem('tcm_team_key', teamKey);
+  // No backend key check needed anymore
+  teamKey = ''; 
+  userProfile = { name: nm, email: em };
   localStorage.setItem('tcm_profile', JSON.stringify(userProfile));
   localStorage.setItem('tcm_last_profile', JSON.stringify(userProfile));
   
@@ -1023,6 +1008,42 @@ function confirmMoveCases() {
   save(); renderAll(); renderDashboard(); closeModal();
 }
 
+function exportCSV() {
+  const cases = filteredCases();
+  if(!cases.length) { alert('No test cases to export.'); return; }
+  
+  let csv = 'ID,Folder,Priority,Summary,Status,Step Order,Action,Expected Result\n';
+  
+  cases.forEach(tc => {
+    const priority = PRIORITY[tc.priority] || '';
+    const status = ['Untested','WIP','Pass','Fail','Blocked','Skip'][tc.status] || 'Untested';
+    
+    if(tc.steps && tc.steps.length > 0) {
+      tc.steps.forEach((s, i) => {
+        const idCol = i === 0 ? tc.id : '';
+        const fldCol = i === 0 ? `"${(tc.category||'Other').replace(/"/g, '""')}"` : '';
+        const priCol = i === 0 ? priority : '';
+        const sumCol = i === 0 ? `"${tc.summary.replace(/"/g, '""')}"` : '';
+        const stCol = i === 0 ? status : '';
+        const descCol = `"${s.description.replace(/"/g, '""')}"`;
+        const expCol = `"${s.expectedResult.replace(/"/g, '""')}"`;
+        csv += `${idCol},${fldCol},${priCol},${sumCol},${stCol},${s.order},${descCol},${expCol}\n`;
+      });
+    } else {
+      csv += `${tc.id},"${(tc.category||'Other').replace(/"/g, '""')}",${priority},"${tc.summary.replace(/"/g, '""')}",${status},,, \n`;
+    }
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `TestCases_${activeProject.replace(/[^a-zA-Z0-9]/g,'_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
 function findDuplicates() {
   if(!activeProject){alert('Please select a project first.');return;}
   const cases = repo.testCases.filter(tc => tc.project === activeProject);
@@ -1106,9 +1127,15 @@ function renderDetail(){
       <button class="btn del" onclick="deleteCase('${tc.id}')">🗑 Delete Case</button>
     </div>
     <div style="margin:14px 0;background:var(--card2);border-radius:6px;border:1px solid var(--border);padding:10px">
-      <div id="hist-btn-${tc.id}" style="font-size:12px;font-weight:600;color:var(--dim);cursor:pointer;user-select:none" onclick="toggleHistory('hist-${tc.id}', 'hist-btn-${tc.id}')">▶ Execution History</div>
+      <div id="hist-btn-${tc.id}" style="font-size:12px;font-weight:600;color:var(--dim);cursor:pointer;user-select:none" onclick="toggleHistory('hist-${tc.id}', 'hist-btn-${tc.id}', 'Execution History')">▶ Execution History</div>
       <div id="hist-${tc.id}" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
         ${renderCaseHistory(tc.id)}
+      </div>
+    </div>
+    <div style="margin:14px 0;background:var(--card2);border-radius:6px;border:1px solid var(--border);padding:10px">
+      <div id="ch-btn-${tc.id}" style="font-size:12px;font-weight:600;color:var(--dim);cursor:pointer;user-select:none" onclick="toggleHistory('ch-${tc.id}', 'ch-btn-${tc.id}', 'Change History')">▶ Change History</div>
+      <div id="ch-${tc.id}" style="display:none;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)">
+        ${renderChangeHistory(tc)}
       </div>
     </div>
     <div class="sl">Steps (${tc.steps.length})</div>
@@ -1116,6 +1143,13 @@ function renderDetail(){
     <button class="asb" onclick="addStep('${tc.id}')">＋ Add Step</button>
     <div style="height:40px"></div>`;
   setTimeout(()=>{const a=document.getElementById('sa');if(a)ag(a);},10);
+}
+function renderChangeHistory(tc){
+  if(!tc.history || tc.history.length===0) return '<div style="font-size:11px;color:var(--muted)">No history available.</div>';
+  return tc.history.map(h => `<div style="font-size:11px;color:var(--dim);margin-bottom:6px;line-height:1.4">
+    <div style="color:var(--text)"><b>👤 ${esc(h.user)}</b> <span style="color:var(--muted);font-size:10px">${new Date(h.timestamp).toLocaleString()}</span></div>
+    <div>${esc(h.action)}</div>
+  </div>`).join('');
 }
 function renderStep(tcId,s,i){
   return`<div class="sk">
@@ -1129,17 +1163,25 @@ function renderStep(tcId,s,i){
 }
 
 // ── CRUD ──
+function logHistory(tc, action){
+  if(!tc.history) tc.history = [];
+  tc.history.unshift({ user: userProfile ? userProfile.name : 'Unknown', action, timestamp: new Date().toISOString() });
+  if(tc.history.length > 50) tc.history.pop(); // Keep last 50 edits
+}
+
 function createCase(){
   if(!activeProject){alert('Please create a project first.');openProjModal();return;}
   const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
-    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown'};
+    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown',history:[]};
+  logHistory(tc, 'Created test case');
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);switchView('cases');
 }
 function deleteCase(id){if(!confirm('Delete this test case?'))return;repo.testCases=repo.testCases.filter(x=>x.id!==id);selectedId='';save();renderAll();}
 function createCaseInCategory(cat){
   if(!activeProject){alert('Please select a project first.');return;}
   const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:cat||repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
-    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown'};
+    steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown',history:[]};
+  logHistory(tc, 'Created test case');
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);
 }
 
@@ -1151,14 +1193,27 @@ function syncStepDOM(tcId) {
   expAreas.forEach((ta, idx) => { if(tc.steps[idx]) tc.steps[idx].expectedResult = ta.value; });
 }
 
-function addStep(tcId){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.push({order:tc.steps.length+1,description:'',expectedResult:'',actualResult:'',status:0});save();renderDetail();}
-function removeStep(tcId,i){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.splice(i,1);tc.steps.forEach((s,j)=>s.order=j+1);save();renderDetail();}
-function uf(tcId,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc[field]=typeof tc[field]==='number'?+val:val;save();renderList();}
-function us(tcId,i,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps[i][field]=val;save();}
-function markCase(tcId,status){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=status;tc.lastRunAt=now();if(status!==3){tc.failReason='';tc.bugLink='';}save();renderAll();selectCase(tcId);}
-function markCaseWithFail(tcId,reason,bugLink){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=3;tc.failReason=reason;tc.bugLink=bugLink;tc.lastRunAt=now();save();renderAll();selectCase(tcId);}
+function addStep(tcId){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.push({order:tc.steps.length+1,description:'',expectedResult:'',actualResult:'',status:0});logHistory(tc,'Added a new step');save();renderDetail();}
+function removeStep(tcId,i){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.splice(i,1);tc.steps.forEach((s,j)=>s.order=j+1);logHistory(tc,`Removed step ${i+1}`);save();renderDetail();}
+function uf(tcId,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
+  const oldVal = tc[field];
+  tc[field]=typeof tc[field]==='number'?+val:val;
+  if(oldVal !== tc[field]) logHistory(tc, `Updated ${field} to "${tc[field]}"`);
+  save();renderList();
+}
+function us(tcId,i,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
+  const oldVal = tc.steps[i][field];
+  tc.steps[i][field]=val;
+  if(oldVal !== val) logHistory(tc, `Updated step ${i+1} ${field}`);
+  save();
+}
+function markCase(tcId,status){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=status;tc.lastRunAt=now();if(status!==3){tc.failReason='';tc.bugLink='';}logHistory(tc, `Marked case status to ${['Untested','WIP','Pass','Fail','Blocked','Skip'][status]}`);save();renderAll();selectCase(tcId);}
+function markCaseWithFail(tcId,reason,bugLink){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=3;tc.failReason=reason;tc.bugLink=bugLink;tc.lastRunAt=now();logHistory(tc, `Marked case as Failed. Reason: ${reason}`);save();renderAll();selectCase(tcId);}
 function markStep(tcId,i,status){
-  const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps[i].status=status;
+  const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
+  const oldStatus = tc.steps[i].status;
+  tc.steps[i].status=status;
+  if(oldStatus !== status) logHistory(tc, `Marked step ${i+1} status to ${['Untested','WIP','Pass','Fail','Blocked','Skip'][status]}`);
   const ss=tc.steps.map(s=>s.status);
   if(ss.every(s=>s===2))tc.status=2;else if(ss.some(s=>s===3))tc.status=3;else if(ss.some(s=>s===4))tc.status=4;else if(ss.some(s=>s===5&&!ss.some(x=>x===3||x===4)))tc.status=5;else if(ss.some(s=>s>0))tc.status=1;
   tc.lastRunAt=now();save();renderDetail();renderList();
@@ -1523,7 +1578,7 @@ function runGenerate(){
 function tgGen(i){if(genSelected.includes(i))genSelected=genSelected.filter(x=>x!==i);else genSelected.push(i);const b=document.getElementById('addbtn');if(b)b.textContent=`✅ Add (${genSelected.length})`;}
 function addGenCases(){
   let firstId='';
-  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||(repo.categories[0]||'Other'),status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown'};repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
+  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||(repo.categories[0]||'Other'),status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown',history:[]};logHistory(tc, 'Generated via AI');repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
   save();closeModal();renderAll();if(firstId)selectCase(firstId);
 }
 function openDocModal(){
