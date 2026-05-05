@@ -278,6 +278,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
           </div>
           <div id="bulk-bar" style="display:none;align-items:center;gap:7px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)">
             <span id="bulk-cnt" style="font-size:11px;color:var(--muted);flex:1"></span>
+            <button class="tbtn" style="font-size:11px;padding:3px 10px;background:var(--card2)" onclick="moveSelectedCases()">📁 Move</button>
             <button class="tbtn sp" style="font-size:11px;padding:3px 10px" onclick="deleteSelectedCases()">🗑 Delete</button>
           </div>
         </div>
@@ -972,6 +973,54 @@ function deleteSelectedCases(){
   selectedCases.clear();
   if(!repo.testCases.find(x=>x.id===selectedId))selectedId='';
   save();renderAll();renderDashboard();
+}
+
+function moveSelectedCases() {
+  if(!selectedCases.size)return;
+  const cats = repo.categories;
+  showModal(`<div class="mh"><h2>📁 Move Test Cases</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <p style="font-size:13px;color:var(--dim);margin-bottom:12px">Moving ${selectedCases.size} selected test case(s).</p>
+    <div style="margin-bottom:12px">
+      <span class="fl">SELECT EXISTING FOLDER</span>
+      <select id="move-cat-sel" class="fi2">
+        <option value="">-- Select Folder --</option>
+        ${cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px">Or</div>
+    <div style="margin-bottom:18px">
+      <span class="fl">CREATE NEW FOLDER</span>
+      <input id="move-cat-new" class="fi2" type="text" placeholder="e.g. Authentication">
+    </div>
+  </div>
+  <div class="mf">
+    <button class="cb gh" onclick="closeModal()">Cancel</button>
+    <button class="cb pr" onclick="confirmMoveCases()">Move Cases</button>
+  </div>`);
+}
+
+function confirmMoveCases() {
+  const sel = document.getElementById('move-cat-sel').value;
+  let neu = document.getElementById('move-cat-new').value.trim();
+  const target = neu || sel;
+  if(!target) { alert('Please select or enter a folder name.'); return; }
+  
+  if(neu && !repo.categories.includes(neu)) {
+    repo.categories.push(neu);
+    // Sort categories alphabetically but keep 'Other' at bottom
+    repo.categories.sort((a,b)=>{
+      if(a==='Other')return 1;if(b==='Other')return -1;
+      return a.localeCompare(b);
+    });
+  }
+  
+  repo.testCases.forEach(tc => {
+    if(selectedCases.has(tc.id)) tc.category = target;
+  });
+  
+  selectedCases.clear();
+  save(); renderAll(); renderDashboard(); closeModal();
 }
 
 function findDuplicates() {
