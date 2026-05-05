@@ -928,16 +928,16 @@ function renderCaseHistory(tcId) {
     </div>`;
   }).join('');
 }
-function toggleHistory(elId, btnId) {
+function toggleHistory(elId, btnId, label = 'Execution History') {
   const el = document.getElementById(elId);
   const btn = document.getElementById(btnId);
   if(!el||!btn)return;
   if (el.style.display === 'none') {
     el.style.display = 'block';
-    btn.innerHTML = '▼ Execution History';
+    btn.innerHTML = `▼ ${label}`;
   } else {
     el.style.display = 'none';
-    btn.innerHTML = '▶ Execution History';
+    btn.innerHTML = `▶ ${label}`;
   }
 }
 function toggleCaseSel(id){if(selectedCases.has(id))selectedCases.delete(id);else selectedCases.add(id);renderList();}
@@ -1163,10 +1163,29 @@ function renderStep(tcId,s,i){
 }
 
 // ── CRUD ──
-function logHistory(tc, action){
+function logHistory(tc, action, fieldKey = null, oldVal = undefined, newVal = undefined){
   if(!tc.history) tc.history = [];
-  tc.history.unshift({ user: userProfile ? userProfile.name : 'Unknown', action, timestamp: new Date().toISOString() });
-  if(tc.history.length > 50) tc.history.pop(); // Keep last 50 edits
+  const now = new Date();
+  const userName = userProfile ? userProfile.name : 'Unknown';
+  
+  // Coalesce rapid edits (within 2 minutes) by the same user on the same field
+  if (tc.history.length > 0 && fieldKey) {
+    const lastEdit = tc.history[0];
+    if (lastEdit.user === userName && lastEdit.fieldKey === fieldKey && (now.getTime() - new Date(lastEdit.timestamp).getTime() < 120000)) {
+       lastEdit.newVal = newVal;
+       lastEdit.action = `Updated ${fieldKey} from "${lastEdit.oldVal}" to "${newVal}"`;
+       lastEdit.timestamp = now.toISOString();
+       return;
+    }
+  }
+  
+  let actionText = action;
+  if (fieldKey && oldVal !== undefined && newVal !== undefined) {
+      actionText = `Updated ${fieldKey} from "${oldVal}" to "${newVal}"`;
+  }
+  
+  tc.history.unshift({ user: userName, action: actionText, timestamp: now.toISOString(), fieldKey, oldVal, newVal });
+  if(tc.history.length > 50) tc.history.pop();
 }
 
 function createCase(){
@@ -1198,13 +1217,13 @@ function removeStep(tcId,i){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.
 function uf(tcId,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
   const oldVal = tc[field];
   tc[field]=typeof tc[field]==='number'?+val:val;
-  if(oldVal !== tc[field]) logHistory(tc, `Updated ${field} to "${tc[field]}"`);
+  if(oldVal !== tc[field]) logHistory(tc, '', field, oldVal, tc[field]);
   save();renderList();
 }
 function us(tcId,i,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
   const oldVal = tc.steps[i][field];
   tc.steps[i][field]=val;
-  if(oldVal !== val) logHistory(tc, `Updated step ${i+1} ${field}`);
+  if(oldVal !== val) logHistory(tc, '', `step ${i+1} ${field}`, oldVal, val);
   save();
 }
 function markCase(tcId,status){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=status;tc.lastRunAt=now();if(status!==3){tc.failReason='';tc.bugLink='';}logHistory(tc, `Marked case status to ${['Untested','WIP','Pass','Fail','Blocked','Skip'][status]}`);save();renderAll();selectCase(tcId);}
