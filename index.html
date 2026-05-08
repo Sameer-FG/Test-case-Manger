@@ -1668,16 +1668,14 @@ function parseCSVToTestCases(text){
   if(!rawLines.length)return[];
   const rows=rawLines.map(parseCSVRow);
   
-  // Auto-detect header row
+  // Auto-detect header row by checking if first row contains recognisable field names
   const headerPatterns={
-    id:/^(id|#|no\.?|tc\s*#?|number|num)$/i,
     summary:/^(summary|title|name|description|test\s*case|testcase)$/i,
     priority:/^(priority|prio|sev|severity)$/i,
     category:/^(category|folder|module|area|section|type)$/i,
     steps:/^(steps?|action|actions|procedure|test\s*steps?)$/i,
     expected:/^(expected\s*(result|outcome)?|result|outcome|pass\s*condition)$/i
   };
-  
   const firstRow=rows[0];
   let hasHeader=firstRow.some(cell=>Object.values(headerPatterns).some(r=>r.test(cell.trim())));
   const hMap={};
@@ -1687,33 +1685,32 @@ function parseCSVToTestCases(text){
     });
   }
   
-  // Default positions when no header
-  const idIdx    = hMap.id       !== undefined ? hMap.id       : 0;
-  const sumIdx   = hMap.summary  !== undefined ? hMap.summary  : (hasHeader?0:1);
-  const priIdx   = hMap.priority !== undefined ? hMap.priority : -1;
-  const catIdx   = hMap.category !== undefined ? hMap.category : -1;
-  const stepsIdx = hMap.steps    !== undefined ? hMap.steps    : 2;
+  // Column positions (defaults: col 0=ID/skip, col 1=Summary, col 2=Steps, col 3=Expected)
+  const sumIdx = hMap.summary  !== undefined ? hMap.summary  : 1;
+  const priIdx = hMap.priority !== undefined ? hMap.priority : -1;
+  const catIdx = hMap.category !== undefined ? hMap.category : -1;
+  const stepsIdx = hMap.steps  !== undefined ? hMap.steps   : 2;
   const expIdx   = hMap.expected !== undefined ? hMap.expected : 3;
   
-  const dataRows = hasHeader ? rows.slice(1) : rows;
-  const cases = [];
+  const dataRows=hasHeader?rows.slice(1):rows;
+  const cases=[];
   
   dataRows.forEach(row=>{
     if(!row.length||row.every(c=>!c))return;
-    const summary=(row[sumIdx]||'').replace(/^"|"$/g,'').trim();
+    // Grab summary — try detected column first, fall back to first non-empty cell
+    let summary=(row[sumIdx]||'').replace(/^"|"$/g,'').trim();
+    if(!summary) summary=(row.find(c=>c.trim())||'').replace(/^"|"$/g,'').trim();
     if(!summary)return;
+    
     const priority=priIdx>=0?parsePriorityStr(row[priIdx]):1;
     const category=catIdx>=0&&row[catIdx]?(row[catIdx].trim()||repo.categories[0]||'Other'):(repo.categories[0]||'Other');
-    const stepsText=(row[stepsIdx]||'').replace(/^"|"$/g,'').trim();
-    const expText=(row[expIdx]||'').replace(/^"|"$/g,'').trim();
     
-    let steps=[];
-    if(stepsText){
-      // Split steps by semicolon, newline, or numbered prefix
-      const parts=stepsText.split(/;\s*|\n\s*|\r\n\s*|(?<=\S)\s+(?=\d{1,2}[.)\s])/).map(s=>s.replace(/^\d{1,2}[.)\s]+/,'').trim()).filter(s=>s.length>2);
-      steps=parts.map(s=>({description:s,expectedResult:expText||'Step completes successfully.'}));
-    }
-    if(!steps.length) steps=[{description:'Execute the test case',expectedResult:expText||'Test passes successfully.'}];
+    // Take cell content VERBATIM — no internal splitting into sub-steps or sub-cases
+    const stepsText=(row[stepsIdx]||'').replace(/^"|"$/g,'').trim();
+    const expText  =(row[expIdx]  ||'').replace(/^"|"$/g,'').trim();
+    
+    // 1 row = 1 test case with exactly 1 step (description = steps cell, expectedResult = result cell)
+    const steps=[{description:stepsText||'Execute the test case.',expectedResult:expText||'Test passes successfully.'}];
     
     cases.push({summary:summary.length>95?summary.slice(0,92)+'\u2026':summary,steps,priority,category});
   });
@@ -1874,11 +1871,12 @@ class TCMGenerator{
     for(const line of lines){
       if(!line) continue;
       // Top-level numbered item = new test case summary
-      if(isTopNum(line)){
+      // BUT only if we're NOT already inside a Steps: section (avoid treating sub-steps as new cases)
+      if(isTopNum(line) && !inSteps){
         finishCase();
         const summary=line.replace(/^\d{1,2}[.)]\s+/,'').replace(/:$/,'').trim();
         cur={summary:summary.length>95?summary.slice(0,92)+'\u2026':summary,steps:[],priority:this.pri(summary),category:this.cat(summary)};
-        inSteps=false; continue;
+        continue;
       }
       if(!cur) continue;
       // "Steps:" section header
@@ -1890,10 +1888,10 @@ class TCMGenerator{
           if(lastStep) lastStep.expectedResult=val;
           else cur.steps.forEach(s=>{if(!s.expectedResult)s.expectedResult=val;});
         }
-        continue;
+        inSteps=false; continue;
       }
-      // Sub-items inside a Steps section OR any sub-item under a numbered case
-      if(isSubItem(line)&&(inSteps||cur.steps.length>0||true)){
+      // Sub-items: numbered items inside Steps section, or any bullet/sub-item
+      if(isSubItem(line)){
         const desc=line.replace(/^([-\u2022*]\s+|\d{1,2}[.)]\s+|[a-z][.)]\s+)/,'').trim();
         lastStep={description:desc,expectedResult:''};
         cur.steps.push(lastStep); continue;
