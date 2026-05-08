@@ -1732,10 +1732,74 @@ class TCMGenerator{
     const t=text.trim();if(!t)return[];
     if(this.isGherkin(t))  return this.parseGherkin(t);
     if(this.isUserStory(t))return this.parseUserStory(t);
+    const structured = this.parseStructured(t);
+    if(structured.length) return structured;
     return this.splitIntoCases(t);
   }
   isGherkin(t){return/\b(scenario\s*:|feature\s*:|given\s+|when\s+|then\s+)/im.test(t);}
   isUserStory(t){return/\bas\s+an?\b.+\bi\s+want\b/im.test(t);}
+
+  /* Structured parser: handles Title/Heading + numbered steps + expected results */
+  parseStructured(text){
+    const lines = text.split('\n').map(l=>l.trim());
+    const cases = [];
+    const isTitle     = l => /^#{1,4}\s+.{4,}/.test(l) || /^(test case|tc|case)\s*[:\-#]?\s*\d*/i.test(l);
+    const isNumbered  = l => /^(\d{1,2}[.):\s]|[-\u2022*\u25ba]\s).{5,}/.test(l);
+    const isExpected  = l => /^(expected\s*(result|outcome|output|behavior)?|result|outcome)[:\s]/i.test(l);
+    const isStepLabel = l => /^(step\s*\d+|action|precondition|pre-condition|setup)[:\s]/i.test(l);
+
+    let cur = null, lastStep = null, pendingExpected = false;
+    const finishCase = () => {
+      if(cur && cur.steps.length > 0){
+        cur.steps.forEach(s=>{ if(!s.expectedResult) s.expectedResult = 'Step completes successfully.'; });
+        cases.push(cur); }
+      cur = null; lastStep = null; pendingExpected = false;
+    };
+
+    for(let i=0; i<lines.length; i++){
+      const line = lines[i];
+      if(!line) continue;
+
+      if(isTitle(line)){
+        finishCase();
+        const title = line.replace(/^#{1,4}\s+/,'').replace(/:$/,'').trim();
+        cur = { summary: title.length>95?title.slice(0,92)+'\u2026':title, steps:[], priority:this.pri(title), category:this.cat(title) };
+        pendingExpected = false; continue;
+      }
+      if(isExpected(line) && cur && lastStep){
+        const val = line.replace(/^(expected\s*(result|outcome|output|behavior)?|result|outcome)[:\s]*/i,'').trim();
+        if(val) lastStep.expectedResult = val;
+        else pendingExpected = true;
+        continue;
+      }
+      if(pendingExpected && cur && lastStep && line){
+        lastStep.expectedResult = line; pendingExpected = false; continue;
+      }
+      if(isNumbered(line) && cur){
+        const content = line.replace(/^(\d{1,2}[.):\s]|[-\u2022*\u25ba]\s)/,'').trim();
+        const splitM = content.match(/^(.+?)\s*[-\u2013\u2014>]+\s*(expected[:\s]|result[:\s]|\u2192|=>)(.+)$/i);
+        if(splitM) lastStep = { description: splitM[1].trim(), expectedResult: splitM[3].trim() };
+        else lastStep = { description: content, expectedResult: '' };
+        cur.steps.push(lastStep); pendingExpected = false; continue;
+      }
+      if(isStepLabel(line) && cur){
+        const content = line.replace(/^(step\s*\d+|action|precondition|pre-condition|setup)[:\s]*/i,'').trim();
+        if(content.length > 4){ lastStep = { description: content, expectedResult: '' }; cur.steps.push(lastStep); }
+        pendingExpected = false; continue;
+      }
+      if(cur && lastStep && !isNumbered(line) && !isTitle(line) && line.length > 5){
+        if(!/^[A-Z][a-z]+:\s*$/.test(line)) lastStep.description += ' ' + line;
+        continue;
+      }
+      if(!cur && line.length > 12){
+        cur = { summary: line.length>95?line.slice(0,92)+'\u2026':line, steps:[], priority:this.pri(line), category:this.cat(line) };
+      }
+    }
+    finishCase();
+    if(cases.every(c=>c.steps.length===0)) return [];
+    return cases;
+  }
+
   isTestable(t){
     const lo=t.toLowerCase();
     const hasReq=/(should|must|will|shall|can|able to|needs to|verify|ensure|check|test|validate)/i.test(lo);
