@@ -1618,14 +1618,124 @@ function handleDrop(e){e.preventDefault();e.currentTarget.classList.remove('drag
 function handleDocFile(e){const f=e.target.files[0];if(f)processDocFile(f);}
 async function processDocFile(file){
   const ext=file.name.split('.').pop().toLowerCase(),status=document.getElementById('doc-status'),prog=document.getElementById('dprog'),pb=document.getElementById('dpb');
-  try{status.textContent='⏳ Reading…';prog.style.display='block';pb.style.width='35%';
+  try{
+    status.textContent='\u23f3 Reading\u2026';prog.style.display='block';pb.style.width='35%';
+    
+    // CSV: parse directly into test cases (skip generator textarea)
+    if(ext==='csv'){
+      const text = await file.text();
+      pb.style.width='100%';
+      const cases = parseCSVToTestCases(text);
+      if(!cases.length){status.style.color='var(--fail)';status.textContent='\u274c No test cases found. Check your CSV columns.';return;}
+      status.style.color='var(--pass)';status.textContent=`\u2705 Found ${cases.length} test cases. Opening preview\u2026`;
+      setTimeout(()=>{closeModal();showImportPreview(cases, file.name);},500);
+      return;
+    }
+    
     let text='';
     if(ext==='docx')text=await parseDocx(file);else if(ext==='pdf')text=await parsePdf(file);else text=await file.text();
     pb.style.width='100%';
-    if(!text.trim()){status.style.color='var(--fail)';status.textContent='❌ No text found. Try copy-pasting content instead.';return;}
-    status.style.color='var(--pass)';status.textContent=`✅ Extracted ${text.split('\n').filter(x=>x.trim()).length} lines. Opening generator…`;
+    if(!text.trim()){status.style.color='var(--fail)';status.textContent='\u274c No text found. Try copy-pasting content instead.';return;}
+    status.style.color='var(--pass)';status.textContent=`\u2705 Extracted ${text.split('\n').filter(x=>x.trim()).length} lines. Opening generator\u2026`;
     setTimeout(()=>{closeModal();openGenModal(text);},600);
-  }catch(e){pb.style.background='var(--fail)';status.style.color='var(--fail)';status.textContent='❌ '+e.message;}
+  }catch(e){pb.style.background='var(--fail)';status.style.color='var(--fail)';status.textContent='\u274c '+e.message;}
+}
+
+/* ── CSV Direct Import ── */
+function parsePriorityStr(text){
+  if(!text)return 1;
+  const t=text.toLowerCase();
+  if(/critical|p0|sev\s*0|blocker/.test(t))return 3;
+  if(/high|p1|sev\s*1|important|major/.test(t))return 2;
+  if(/low|p3|p4|minor|trivial|cosmetic/.test(t))return 0;
+  return 1;
+}
+
+function parseCSVRow(row){
+  const result=[];let field='',inQuotes=false;
+  for(let i=0;i<row.length;i++){
+    const ch=row[i];
+    if(ch==='"'){if(inQuotes&&row[i+1]==='"'){field+='"';i++;}else inQuotes=!inQuotes;}
+    else if(ch===','&&!inQuotes){result.push(field.trim());field='';}
+    else field+=ch;
+  }
+  result.push(field.trim());
+  return result;
+}
+
+function parseCSVToTestCases(text){
+  const rawLines=text.replace(/\r\n/g,'\n').split('\n').filter(l=>l.trim());
+  if(!rawLines.length)return[];
+  const rows=rawLines.map(parseCSVRow);
+  
+  // Auto-detect header row
+  const headerPatterns={
+    id:/^(id|#|no\.?|tc\s*#?|number|num)$/i,
+    summary:/^(summary|title|name|description|test\s*case|testcase)$/i,
+    priority:/^(priority|prio|sev|severity)$/i,
+    category:/^(category|folder|module|area|section|type)$/i,
+    steps:/^(steps?|action|actions|procedure|test\s*steps?)$/i,
+    expected:/^(expected\s*(result|outcome)?|result|outcome|pass\s*condition)$/i
+  };
+  
+  const firstRow=rows[0];
+  let hasHeader=firstRow.some(cell=>Object.values(headerPatterns).some(r=>r.test(cell.trim())));
+  const hMap={};
+  if(hasHeader){
+    firstRow.forEach((cell,i)=>{
+      for(const[key,pat]of Object.entries(headerPatterns)){if(pat.test(cell.trim())){hMap[key]=i;break;}}
+    });
+  }
+  
+  // Default positions when no header
+  const idIdx    = hMap.id       !== undefined ? hMap.id       : 0;
+  const sumIdx   = hMap.summary  !== undefined ? hMap.summary  : (hasHeader?0:1);
+  const priIdx   = hMap.priority !== undefined ? hMap.priority : -1;
+  const catIdx   = hMap.category !== undefined ? hMap.category : -1;
+  const stepsIdx = hMap.steps    !== undefined ? hMap.steps    : 2;
+  const expIdx   = hMap.expected !== undefined ? hMap.expected : 3;
+  
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const cases = [];
+  
+  dataRows.forEach(row=>{
+    if(!row.length||row.every(c=>!c))return;
+    const summary=(row[sumIdx]||'').replace(/^"|"$/g,'').trim();
+    if(!summary)return;
+    const priority=priIdx>=0?parsePriorityStr(row[priIdx]):1;
+    const category=catIdx>=0&&row[catIdx]?(row[catIdx].trim()||repo.categories[0]||'Other'):(repo.categories[0]||'Other');
+    const stepsText=(row[stepsIdx]||'').replace(/^"|"$/g,'').trim();
+    const expText=(row[expIdx]||'').replace(/^"|"$/g,'').trim();
+    
+    let steps=[];
+    if(stepsText){
+      // Split steps by semicolon, newline, or numbered prefix
+      const parts=stepsText.split(/;\s*|\n\s*|\r\n\s*|(?<=\S)\s+(?=\d{1,2}[.)\s])/).map(s=>s.replace(/^\d{1,2}[.)\s]+/,'').trim()).filter(s=>s.length>2);
+      steps=parts.map(s=>({description:s,expectedResult:expText||'Step completes successfully.'}));
+    }
+    if(!steps.length) steps=[{description:'Execute the test case',expectedResult:expText||'Test passes successfully.'}];
+    
+    cases.push({summary:summary.length>95?summary.slice(0,92)+'\u2026':summary,steps,priority,category});
+  });
+  return cases;
+}
+
+/* ── Shared Import Preview Modal ── */
+function showImportPreview(cases, fileName){
+  if(!activeProject){alert('Please select a project first.');return;}
+  generatedCases=cases;genSelected=cases.map((_,i)=>i);
+  const previewHtml=cases.map((tc,i)=>`<div class="pc">
+    <div class="psr"><input type="checkbox" id="gc${i}" checked onchange="tgGen(${i})"><label for="gc${i}" style="font-size:12px;font-weight:600;cursor:pointer;flex:1">${esc(tc.summary)}</label>
+    <span class="tag" style="background:${PC[tc.priority||1]}22;color:${PC[tc.priority||1]}">${PRIORITY[tc.priority||1]}</span></div>
+    <div style="margin-top:7px">${tc.steps.map((s,j)=>`<div class="ps"><span class="ps-n">${j+1}</span><div class="ps-b"><div class="ps-d">${esc(s.description)}</div><div class="ps-e">\u2192 ${esc(s.expectedResult)}</div></div></div>`).join('')}</div>
+  </div>`).join('');
+  
+  showModal(`<div class="mh"><h2>\ud83d\udcc4 Import: ${esc(fileName)}</h2><button class="mc" onclick="closeModal()">&times;</button></div>
+  <div class="mb">
+    <p style="font-size:12px;color:var(--dim);margin-bottom:12px">Found <b>${cases.length}</b> test case(s). Select which to import.</p>
+    <div>${previewHtml}</div>
+  </div>
+  <div class="mf"><button class="cb gh" onclick="closeModal()">Cancel</button><span style="font-size:12px;color:var(--muted);flex:1">${cases.length} case(s)</span><button class="cb ok" id="addbtn" onclick="addGenCases()">\u2705 Add (${cases.length})</button></div>`);
 }
 async function parseDocx(file){
   await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
@@ -1733,12 +1843,69 @@ class TCMGenerator{
     const t=text.trim();if(!t)return[];
     if(this.isGherkin(t))  return this.parseGherkin(t);
     if(this.isUserStory(t))return this.parseUserStory(t);
+    // Try numbered-doc pattern first (numbered items = summaries, Steps/Result = fields)
+    if(this.isNumberedDoc(t)){ const nd=this.parseNumberedDoc(t); if(nd.length) return nd; }
     const structured = this.parseStructured(t);
     if(structured.length) return structured;
     return this.splitIntoCases(t);
   }
   isGherkin(t){return/\b(scenario\s*:|feature\s*:|given\s+|when\s+|then\s+)/im.test(t);}
   isUserStory(t){return/\bas\s+an?\b.+\bi\s+want\b/im.test(t);}
+  // Detects documents where top-level numbered items are test case descriptions
+  isNumberedDoc(t){ return /^\s*\d{1,2}[.)]\s+.{8,}/m.test(t) && /\b(steps?|result|expected)\s*:/im.test(t); }
+  parseNumberedDoc(text){
+    const lines=text.split('\n').map(l=>l.trim());
+    const cases=[];
+    let cur=null,lastStep=null,inSteps=false;
+    const isTopNum  = l => /^\d{1,2}[.)]\s+.{6,}/.test(l);
+    const isStepSec = l => /^steps?\s*:/i.test(l);
+    const isResult  = l => /^(expected\s*(result|outcome)?|result)\s*:/i.test(l);
+    const isSubItem = l => /^([-\u2022*]\s+|\d{1,2}[.)]\s+|[a-z][.)]\s+).{3,}/.test(l);
+
+    const finishCase=()=>{
+      if(cur){
+        cur.steps.forEach(s=>{if(!s.expectedResult)s.expectedResult='Step completes successfully.';});
+        if(!cur.steps.length) cur.steps.push({description:'Execute the test',expectedResult:'Test passes.'});
+        cases.push(cur);
+      }
+      cur=null;lastStep=null;inSteps=false;
+    };
+
+    for(const line of lines){
+      if(!line) continue;
+      // Top-level numbered item = new test case summary
+      if(isTopNum(line)){
+        finishCase();
+        const summary=line.replace(/^\d{1,2}[.)]\s+/,'').replace(/:$/,'').trim();
+        cur={summary:summary.length>95?summary.slice(0,92)+'\u2026':summary,steps:[],priority:this.pri(summary),category:this.cat(summary)};
+        inSteps=false; continue;
+      }
+      if(!cur) continue;
+      // "Steps:" section header
+      if(isStepSec(line)){ inSteps=true; continue; }
+      // "Expected Result:" / "Result:" — attach to last step or all steps
+      if(isResult(line)){
+        const val=line.replace(/^(expected\s*(result|outcome)?|result)\s*:\s*/i,'').trim();
+        if(val){
+          if(lastStep) lastStep.expectedResult=val;
+          else cur.steps.forEach(s=>{if(!s.expectedResult)s.expectedResult=val;});
+        }
+        continue;
+      }
+      // Sub-items inside a Steps section OR any sub-item under a numbered case
+      if(isSubItem(line)&&(inSteps||cur.steps.length>0||true)){
+        const desc=line.replace(/^([-\u2022*]\s+|\d{1,2}[.)]\s+|[a-z][.)]\s+)/,'').trim();
+        lastStep={description:desc,expectedResult:''};
+        cur.steps.push(lastStep); continue;
+      }
+      // Plain continuation text — if not in steps, this is part of the summary
+      if(!inSteps && cur.steps.length===0){
+        cur.summary+=' '+line;
+      }
+    }
+    finishCase();
+    return cases;
+  }
 
   /* Structured parser: handles Title/Heading + numbered/bulleted steps + Expected results */
   parseStructured(text){
