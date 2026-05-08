@@ -1651,72 +1651,90 @@ function parsePriorityStr(text){
   return 1;
 }
 
-function parseCSVRow(row){
-  const result=[];let field='',inQuotes=false;
-  for(let i=0;i<row.length;i++){
-    const ch=row[i];
-    if(ch==='"'){if(inQuotes&&row[i+1]==='"'){field+='"';i++;}else inQuotes=!inQuotes;}
-    else if(ch===','&&!inQuotes){result.push(field.trim());field='';}
-    else field+=ch;
+// Full CSV parser — handles multi-line cells inside quotes correctly
+function parseFullCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') { field += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      row.push(field); field = '';
+    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      if (row.some(c => c.trim())) rows.push(row);
+      row = [];
+    } else {
+      field += ch;
+    }
   }
-  result.push(field.trim());
-  return result;
+  row.push(field);
+  if (row.some(c => c.trim())) rows.push(row);
+  return rows;
 }
 
-function parseCSVToTestCases(text){
-  const rawLines=text.replace(/\r\n/g,'\n').split('\n').filter(l=>l.trim());
-  if(!rawLines.length)return[];
-  const rows=rawLines.map(parseCSVRow);
-  
-  // Auto-detect header row by checking if first row contains recognisable field names
-  const headerPatterns={
-    summary:/^(summary|title|name|description|test\s*case|testcase)$/i,
-    priority:/^(priority|prio|sev|severity)$/i,
-    category:/^(category|folder|module|area|section|type)$/i,
-    steps:/^(steps?|action|actions|procedure|test\s*steps?)$/i,
-    expected:/^(expected\s*(result|outcome)?|result|outcome|pass\s*condition)$/i
+function parseCSVToTestCases(text) {
+  const rows = parseFullCSV(text);
+  if (!rows.length) return [];
+
+  const headerPatterns = {
+    summary:  /^(summary|title|name|description|test\s*case|testcase)$/i,
+    priority: /^(priority|prio|sev|severity)$/i,
+    category: /^(category|folder|module|area|section|type)$/i,
+    steps:    /^(steps?|action|actions|procedure|test\s*steps?)$/i,
+    expected: /^(expected\s*(result|outcome)?|result|outcome|pass\s*condition)$/i
   };
-  const firstRow=rows[0];
-  let hasHeader=firstRow.some(cell=>Object.values(headerPatterns).some(r=>r.test(cell.trim())));
-  const hMap={};
-  if(hasHeader){
-    firstRow.forEach((cell,i)=>{
-      for(const[key,pat]of Object.entries(headerPatterns)){if(pat.test(cell.trim())){hMap[key]=i;break;}}
+
+  const firstRow = rows[0];
+  const hasHeader = firstRow.some(cell => Object.values(headerPatterns).some(r => r.test(cell.trim())));
+  const hMap = {};
+  if (hasHeader) {
+    firstRow.forEach((cell, i) => {
+      for (const [key, pat] of Object.entries(headerPatterns)) {
+        if (pat.test(cell.trim())) { hMap[key] = i; break; }
+      }
     });
   }
-  
-  // Column positions (defaults: col 0=ID/skip, col 1=Summary, col 2=Steps, col 3=Expected)
-  const sumIdx = hMap.summary  !== undefined ? hMap.summary  : 1;
-  const priIdx = hMap.priority !== undefined ? hMap.priority : -1;
-  const catIdx = hMap.category !== undefined ? hMap.category : -1;
-  const stepsIdx = hMap.steps  !== undefined ? hMap.steps   : 2;
+
+  // Default: col 0 = ID/row number (skip), col 1 = Summary, col 2 = Steps, col 3 = Expected Result
+  const sumIdx   = hMap.summary  !== undefined ? hMap.summary  : 1;
+  const priIdx   = hMap.priority !== undefined ? hMap.priority : -1;
+  const catIdx   = hMap.category !== undefined ? hMap.category : -1;
+  const stepsIdx = hMap.steps    !== undefined ? hMap.steps    : 2;
   const expIdx   = hMap.expected !== undefined ? hMap.expected : 3;
-  
-  const dataRows=hasHeader?rows.slice(1):rows;
-  const cases=[];
-  
-  dataRows.forEach(row=>{
-    if(!row.length||row.every(c=>!c))return;
-    // Grab summary — try detected column first, fall back to first non-empty cell
-    let summary=(row[sumIdx]||'').replace(/^"|"$/g,'').trim();
-    if(!summary) summary=(row.find(c=>c.trim())||'').replace(/^"|"$/g,'').trim();
-    if(!summary)return;
-    
-    const priority=priIdx>=0?parsePriorityStr(row[priIdx]):1;
-    const category=catIdx>=0&&row[catIdx]?(row[catIdx].trim()||repo.categories[0]||'Other'):(repo.categories[0]||'Other');
-    
-    // Take cell content VERBATIM — no internal splitting into sub-steps or sub-cases
-    const stepsText=(row[stepsIdx]||'').replace(/^"|"$/g,'').trim();
-    const expText  =(row[expIdx]  ||'').replace(/^"|"$/g,'').trim();
-    
-    // 1 row = 1 test case with exactly 1 step (description = steps cell, expectedResult = result cell)
-    const steps=[{description:stepsText||'Execute the test case.',expectedResult:expText||'Test passes successfully.'}];
-    
-    cases.push({summary:summary.length>95?summary.slice(0,92)+'\u2026':summary,steps,priority,category});
+
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+  const cases = [];
+
+  dataRows.forEach(row => {
+    if (!row.length || row.every(c => !c.trim())) return;
+
+    let summary = (row[sumIdx] || '').trim();
+    if (!summary) summary = (row.find(c => c.trim()) || '').trim();
+    if (!summary) return;
+
+    const priority = priIdx >= 0 ? parsePriorityStr(row[priIdx]) : 1;
+    const category = catIdx >= 0 && row[catIdx] ? (row[catIdx].trim() || repo.categories[0] || 'Other') : (repo.categories[0] || 'Other');
+
+    // Take Steps and Expected Result VERBATIM from cells — no splitting whatsoever
+    // Multi-line cell content (newlines inside quotes) stays as one block
+    const stepsText = (row[stepsIdx] || '').trim();
+    const expText   = (row[expIdx]   || '').trim();
+
+    // 1 row = 1 test case, 1 step
+    cases.push({
+      summary: summary.length > 95 ? summary.slice(0, 92) + '\u2026' : summary,
+      steps: [{ description: stepsText || 'Execute the test case.', expectedResult: expText || 'Test passes successfully.' }],
+      priority,
+      category
+    });
   });
+
   return cases;
 }
-
 /* ── Shared Import Preview Modal ── */
 function showImportPreview(cases, fileName){
   if(!activeProject){alert('Please select a project first.');return;}
