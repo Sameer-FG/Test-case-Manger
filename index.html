@@ -1639,25 +1639,26 @@ async function parseDocx(file){
   let pm;
   while((pm=paraRe.exec(xml))!==null){
     const para=pm[0];
-    // Detect heading style
+    // Detect heading by Word style
     const styleM=para.match(/<w:pStyle\s+w:val="([^"]+)"/);
     const style=(styleM?styleM[1]:'').toLowerCase();
-    const isHeading=/heading|title/.test(style);
-    // Detect list (numbered or bulleted)
+    let isHeading=/heading|title/.test(style);
+    // Detect list (numbered or bulleted via Word numbering)
     const isList=!!para.match(/<w:numId\s+w:val=/);
+    // Detect bold (short bold paragraphs = headings)
+    const hasBold=/<w:b(?:\s+w:val="true"\s*\/|\s*\/>)/.test(para);
     // Extract ONLY the actual text runs (<w:t> elements)
     const parts=[];
     const tRe=/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g;
     let tm;
     while((tm=tRe.exec(para))!==null)parts.push(tm[1]);
     const raw=parts.join('').replace(/\s+/g,' ').trim();
-    if(!raw||raw.length<4)continue;
-    // Skip lines that are pure numbers (page numbers etc)
+    if(!raw||raw.length<3)continue;
+    // Skip pure page numbers
     if(/^\d{1,4}$/.test(raw))continue;
-    // Skip lines with mostly non-printable/garbage chars
+    // Skip mostly non-printable chars
     const printable=(raw.match(/[\x20-\x7E\u00C0-\u024F]/g)||[]).length;
     if(printable/raw.length<0.7)continue;
-    // Format with heading/bullet markers so the generator can split correctly
     if(isHeading)lines.push('## '+raw);
     else if(isList)lines.push('• '+raw);
     else lines.push(raw);
@@ -1739,60 +1740,76 @@ class TCMGenerator{
   isGherkin(t){return/\b(scenario\s*:|feature\s*:|given\s+|when\s+|then\s+)/im.test(t);}
   isUserStory(t){return/\bas\s+an?\b.+\bi\s+want\b/im.test(t);}
 
-  /* Structured parser: handles Title/Heading + numbered steps + expected results */
+  /* Structured parser: handles Title/Heading + numbered/bulleted steps + Expected results */
   parseStructured(text){
     const lines = text.split('\n').map(l=>l.trim());
     const cases = [];
-    const isTitle     = l => /^#{1,4}\s+.{4,}/.test(l) || /^(test case|tc|case)\s*[:\-#]?\s*\d*/i.test(l);
-    const isNumbered  = l => /^(\d{1,2}[.):\s]|[-\u2022*\u25ba]\s).{5,}/.test(l);
-    const isExpected  = l => /^(expected\s*(result|outcome|output|behavior)?|result|outcome)[:\s]/i.test(l);
-    const isStepLabel = l => /^(step\s*\d+|action|precondition|pre-condition|setup)[:\s]/i.test(l);
+    
+    const isHeadingLine = l => /^#{1,4}\s+.{4,}/.test(l) || /^(test case|tc|case)\s*[:\-#]?\s*\d*/i.test(l);
+    const isNumbered    = l => /^(\d{1,2}[.):\s]|[\-\u2022*\u25ba]\s).{4,}/.test(l) || /^Step\s*\d+[.:]\s*.{4,}/i.test(l);
+    const isExpected    = l => /^(expected\s*(result|outcome|output|behavior)?|result|outcome)[:\s]/i.test(l);
 
     let cur = null, lastStep = null, pendingExpected = false;
     const finishCase = () => {
       if(cur && cur.steps.length > 0){
-        cur.steps.forEach(s=>{ if(!s.expectedResult) s.expectedResult = 'Step completes successfully.'; });
-        cases.push(cur); }
-      cur = null; lastStep = null; pendingExpected = false;
+        cur.steps.forEach(s=>{ if(!s.expectedResult) s.expectedResult='Step completes successfully.'; });
+        cases.push(cur);
+      }
+      cur=null; lastStep=null; pendingExpected=false;
     };
 
     for(let i=0; i<lines.length; i++){
       const line = lines[i];
-      if(!line) continue;
+      if(!line){ pendingExpected=false; continue; }
 
-      if(isTitle(line)){
+      // ── Explicit heading (## or "Test Case:") ──
+      if(isHeadingLine(line)){
         finishCase();
         const title = line.replace(/^#{1,4}\s+/,'').replace(/:$/,'').trim();
-        cur = { summary: title.length>95?title.slice(0,92)+'\u2026':title, steps:[], priority:this.pri(title), category:this.cat(title) };
-        pendingExpected = false; continue;
+        cur={ summary:title.length>95?title.slice(0,92)+'\u2026':title, steps:[], priority:this.pri(title), category:this.cat(title) };
+        continue;
       }
+
+      // ── Expected result line ──
       if(isExpected(line) && cur && lastStep){
         const val = line.replace(/^(expected\s*(result|outcome|output|behavior)?|result|outcome)[:\s]*/i,'').trim();
-        if(val) lastStep.expectedResult = val;
-        else pendingExpected = true;
+        if(val) lastStep.expectedResult=val;
+        else pendingExpected=true;
         continue;
       }
-      if(pendingExpected && cur && lastStep && line){
-        lastStep.expectedResult = line; pendingExpected = false; continue;
+      if(pendingExpected && cur && lastStep){
+        lastStep.expectedResult=line; pendingExpected=false; continue;
       }
+
+      // ── Numbered / bulleted step line ──
       if(isNumbered(line) && cur){
-        const content = line.replace(/^(\d{1,2}[.):\s]|[-\u2022*\u25ba]\s)/,'').trim();
-        const splitM = content.match(/^(.+?)\s*[-\u2013\u2014>]+\s*(expected[:\s]|result[:\s]|\u2192|=>)(.+)$/i);
-        if(splitM) lastStep = { description: splitM[1].trim(), expectedResult: splitM[3].trim() };
-        else lastStep = { description: content, expectedResult: '' };
-        cur.steps.push(lastStep); pendingExpected = false; continue;
+        const content=line.replace(/^(\d{1,2}[.):\s]|[\-\u2022*\u25ba]\s|Step\s*\d+[.:]\s*)/i,'').trim();
+        const splitM=content.match(/^(.+?)\s*[-\u2013\u2014>]+\s*(expected[:\s]|result[:\s]|\u2192|=>)(.+)$/i);
+        if(splitM) lastStep={description:splitM[1].trim(),expectedResult:splitM[3].trim()};
+        else lastStep={description:content,expectedResult:''};
+        cur.steps.push(lastStep); pendingExpected=false; continue;
       }
-      if(isStepLabel(line) && cur){
-        const content = line.replace(/^(step\s*\d+|action|precondition|pre-condition|setup)[:\s]*/i,'').trim();
-        if(content.length > 4){ lastStep = { description: content, expectedResult: '' }; cur.steps.push(lastStep); }
-        pendingExpected = false; continue;
+
+      // ── Implicit heading: plain text line followed by step lines ──
+      // Look ahead: if next non-empty lines are numbered/bulleted, treat this as a case title
+      if(!isNumbered(line) && !isExpected(line)){
+        let nextStepIdx=-1;
+        for(let j=i+1;j<Math.min(i+4,lines.length);j++){
+          if(!lines[j].trim()) continue;
+          if(isNumbered(lines[j].trim())){ nextStepIdx=j; break; }
+          break;
+        }
+        if(nextStepIdx>-1){
+          finishCase();
+          const title=line.replace(/:$/,'').trim();
+          cur={ summary:title.length>95?title.slice(0,92)+'\u2026':title, steps:[], priority:this.pri(title), category:this.cat(title) };
+          continue;
+        }
       }
-      if(cur && lastStep && !isNumbered(line) && !isTitle(line) && line.length > 5){
-        if(!/^[A-Z][a-z]+:\s*$/.test(line)) lastStep.description += ' ' + line;
-        continue;
-      }
-      if(!cur && line.length > 12){
-        cur = { summary: line.length>95?line.slice(0,92)+'\u2026':line, steps:[], priority:this.pri(line), category:this.cat(line) };
+
+      // ── Continuation: append to current step description ──
+      if(cur && lastStep && line.length>4 && !isHeadingLine(line)){
+        lastStep.description+=' '+line;
       }
     }
     finishCase();
