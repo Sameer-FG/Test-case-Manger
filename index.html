@@ -279,6 +279,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
           </div>
           <div id="bulk-bar" style="display:none;align-items:center;gap:7px;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.05)">
             <span id="bulk-cnt" style="font-size:11px;color:var(--muted);flex:1"></span>
+            <button class="tbtn" style="font-size:11px;padding:3px 10px;background:var(--card2)" onclick="copySelectedCases()" title="Copy to another project">📋 Copy</button>
             <button class="tbtn" style="font-size:11px;padding:3px 10px;background:var(--card2)" onclick="moveSelectedCases()">📁 Move</button>
             <button class="tbtn sp" style="font-size:11px;padding:3px 10px" onclick="deleteSelectedCases()">🗑 Delete</button>
           </div>
@@ -1006,6 +1007,64 @@ function confirmMoveCases() {
   
   selectedCases.clear();
   save(); renderAll(); renderDashboard(); closeModal();
+}
+
+function copySelectedCases() {
+  if(!selectedCases.size) return;
+  const otherProjects = repo.projects.filter(p => p !== activeProject);
+  if(!otherProjects.length) { alert('No other projects exist. Create another project first.'); return; }
+  showModal(`<div class="mh"><h2>\ud83d\udccb Copy Test Cases</h2><button class="mc" onclick="closeModal()">&times;</button></div>
+  <div class="mb">
+    <p style="font-size:13px;color:var(--dim);margin-bottom:16px">Copying <b>${selectedCases.size}</b> test case(s) to another project. The originals will stay in <b>${esc(activeProject)}</b>.</p>
+    <span class="fl">SELECT TARGET PROJECT</span>
+    <select id="copy-proj-sel" class="fi2" style="margin-bottom:14px">
+      <option value="">-- Select Project --</option>
+      ${otherProjects.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')}
+    </select>
+    <span class="fl" style="margin-top:8px">FOLDER IN TARGET PROJECT <span style="color:var(--muted);font-weight:normal;text-transform:none">(optional, defaults to same folder)</span></span>
+    <select id="copy-folder-sel" class="fi2">
+      <option value="">-- Keep same folder --</option>
+      ${repo.categories.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+    </select>
+  </div>
+  <div class="mf">
+    <button class="cb gh" onclick="closeModal()">Cancel</button>
+    <button class="cb pr" onclick="confirmCopyCases()">📋 Copy Cases</button>
+  </div>`);
+}
+
+function confirmCopyCases() {
+  const targetProject = document.getElementById('copy-proj-sel').value;
+  const targetFolder  = document.getElementById('copy-folder-sel').value;
+  if(!targetProject) { alert('Please select a target project.'); return; }
+  
+  let copiedCount = 0;
+  selectedCases.forEach(id => {
+    const src = repo.testCases.find(tc => tc.id === id);
+    if(!src) return;
+    const newTc = {
+      id: `TC-${String(repo.nextId++).padStart(3,'0')}`,
+      project: targetProject,
+      summary: src.summary,
+      priority: src.priority,
+      category: targetFolder || src.category,
+      status: 0,          // Reset to Untested in the new project
+      failReason: '',
+      bugLink: '',
+      steps: src.steps.map((s,j) => ({ order:j+1, description:s.description, expectedResult:s.expectedResult, actualResult:'', status:0 })),
+      createdAt: now(),
+      lastRunAt: '',
+      durationSeconds: 0,
+      createdBy: userProfile ? userProfile.name : 'Unknown',
+      history: [{ user: userProfile ? userProfile.name : 'Unknown', action: `Copied from project "${activeProject}" (original: ${src.id})`, timestamp: new Date().toISOString() }]
+    };
+    repo.testCases.push(newTc);
+    copiedCount++;
+  });
+  
+  selectedCases.clear();
+  save(); renderAll(); renderDashboard(); closeModal();
+  alert(`\u2705 ${copiedCount} test case(s) copied to "${targetProject}" successfully!`);
 }
 
 function exportCSV() {
