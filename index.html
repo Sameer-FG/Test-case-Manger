@@ -704,6 +704,20 @@ async function load(){
   }
   renderProfile();
 }
+function getNextTcId(proj) {
+  let maxId = 0;
+  repo.testCases.forEach(tc => {
+    if (tc.project === proj) {
+      const match = tc.id.match(/^TC-(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxId) maxId = num;
+      }
+    }
+  });
+  return `TC-${String(maxId + 1).padStart(3, '0')}`;
+}
+
 function applyRepo(data){
   repo=data;
   if(!repo.projects)repo.projects=[];
@@ -715,6 +729,41 @@ function applyRepo(data){
   repo.testCases.forEach(tc => { 
     if(typeof tc.category === 'number') { tc.category = repo.categories[tc.category] || 'Other'; migrated = true; }
   });
+
+  // Migration for project-specific IDs
+  if(!repo.idMigratedToProjectSpecific) {
+    let idMapping = {};
+    repo.projects.forEach(proj => {
+      let counter = 1;
+      repo.testCases.forEach(tc => {
+        if(tc.project === proj) {
+          const newId = `TC-${String(counter++).padStart(3,'0')}`;
+          if(tc.id !== newId) {
+            idMapping[tc.id] = newId;
+            tc.id = newId;
+          }
+        }
+      });
+    });
+
+    if(Object.keys(idMapping).length > 0) {
+      repo.testRuns.forEach(run => {
+        run.caseIds = run.caseIds.map(oldId => idMapping[oldId] || oldId);
+      });
+      const newRunResults = {};
+      for(const runId in repo.runResults) {
+        newRunResults[runId] = {};
+        for(const oldId in repo.runResults[runId]) {
+          const newId = idMapping[oldId] || oldId;
+          newRunResults[runId][newId] = repo.runResults[runId][oldId];
+        }
+      }
+      repo.runResults = newRunResults;
+    }
+    repo.idMigratedToProjectSpecific = true;
+    migrated = true;
+  }
+
   if(migrated) setTimeout(doSave, 1000); // trigger save to persist migration to server
 
   if(!repo.testRuns)repo.testRuns=[];
@@ -1043,7 +1092,7 @@ function confirmCopyCases() {
     const src = repo.testCases.find(tc => tc.id === id);
     if(!src) return;
     const newTc = {
-      id: `TC-${String(repo.nextId++).padStart(3,'0')}`,
+      id: getNextTcId(targetProject),
       project: targetProject,
       summary: src.summary,
       priority: src.priority,
@@ -1249,7 +1298,7 @@ function logHistory(tc, action, fieldKey = null, oldVal = undefined, newVal = un
 
 function createCase(){
   if(!activeProject){alert('Please create a project first.');openProjModal();return;}
-  const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
+  const tc={id:getNextTcId(activeProject),project:activeProject,summary:'New test case',priority:1,category:repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
     steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown',history:[]};
   logHistory(tc, 'Created test case');
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);switchView('cases');
@@ -1257,7 +1306,7 @@ function createCase(){
 function deleteCase(id){if(!confirm('Delete this test case?'))return;repo.testCases=repo.testCases.filter(x=>x.id!==id);selectedId='';save();renderAll();}
 function createCaseInCategory(cat){
   if(!activeProject){alert('Please select a project first.');return;}
-  const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:'New test case',priority:1,category:cat||repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
+  const tc={id:getNextTcId(activeProject),project:activeProject,summary:'New test case',priority:1,category:cat||repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
     steps:[{order:1,description:'Describe the action.',expectedResult:'Expected outcome.',actualResult:'',status:0}],createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown',history:[]};
   logHistory(tc, 'Created test case');
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);
@@ -1656,7 +1705,7 @@ function runGenerate(){
 function tgGen(i){if(genSelected.includes(i))genSelected=genSelected.filter(x=>x!==i);else genSelected.push(i);const b=document.getElementById('addbtn');if(b)b.textContent=`✅ Add (${genSelected.length})`;}
 function addGenCases(){
   let firstId='';
-  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:`TC-${String(repo.nextId++).padStart(3,'0')}`,project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||(repo.categories[0]||'Other'),status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown',history:[]};logHistory(tc, 'Generated via AI');repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
+  genSelected.forEach(i=>{const g=generatedCases[i];const tc={id:getNextTcId(activeProject),project:activeProject,summary:g.summary,priority:g.priority||1,category:g.category||(repo.categories[0]||'Other'),status:0,failReason:'',bugLink:'',steps:g.steps.map((s,j)=>({order:j+1,description:s.description,expectedResult:s.expectedResult,actualResult:'',status:0})),createdAt:now(),lastRunAt:'',durationSeconds:0,createdBy:userProfile?userProfile.name:'Unknown',history:[]};logHistory(tc, 'Generated via AI');repo.testCases.push(tc);if(!firstId)firstId=tc.id;});
   save();closeModal();renderAll();if(firstId)selectCase(firstId);
 }
 function openDocModal(){
