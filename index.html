@@ -1411,8 +1411,13 @@ function renderRuns(){
   if(!runs.length){el.innerHTML='<div class="emp">No test runs match this filter.</div>';return;}
   el.innerHTML=runs.map(r=>{const s=getRunStats(r.id);const done=isRunComplete(r.id);const pct=s.total>0?Math.round((s.pass+s.fail+s.blocked+s.skip)/s.total*100):0;
     return`<div class="ri${r.id===selectedRunId?' on':''}" onclick="selectRun('${r.id}')">
-      <div class="ri-name">${esc(r.name)}</div>
-      <div class="ri-meta">v${esc(r.version)} · ${esc(r.date)} · ${s.total} cases${done?' · ✅ Done':' · '+pct+'%'}</div>
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div class="ri-name">${esc(r.name)}</div>
+          <div class="ri-meta">v${esc(r.version)} · ${esc(r.date)} · ${s.total} cases${done?' · ✅ Done':' · '+pct+'%'}</div>
+        </div>
+        <button class="tbtn" style="padding:4px;font-size:10px;opacity:.5" onclick="event.stopPropagation();navigator.clipboard.writeText(window.location.origin+window.location.pathname+'?run='+encodeURIComponent('${r.id}'));alert('Link copied to clipboard!')" title="Copy Share Link">🔗</button>
+      </div>
       <div class="ri-prog"><div class="ri-pb" style="width:${pct}%;background:${s.fail>0?'var(--fail)':'var(--pass)'}"></div></div>
     </div>`;}).join('');
 }
@@ -1950,11 +1955,18 @@ renderProfile(); // Paint profile badge immediately from localStorage
 load().then(()=>{
   startPolling();
   const sp=new URLSearchParams(window.location.search);
-  if(sp.get('run')){
+  const rId = sp.get('run');
+  if(rId){
     setTimeout(()=>{
-      switchView('runs');
-      selectRun(sp.get('run'));
-    },150);
+      const run = repo.testRuns.find(r => r.id === rId);
+      if(run) {
+        if(activeProject !== run.project) setProject(run.project);
+        setTimeout(()=>{
+          switchView('runs');
+          selectRun(rId);
+        }, 100);
+      }
+    }, 200);
   }
 });
 
