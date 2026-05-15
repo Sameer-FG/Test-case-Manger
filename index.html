@@ -864,40 +864,84 @@ function renderDashboard(){
   if(!proj){cont.innerHTML='<p style="color:var(--muted);font-size:13px">Create a project to see stats here.</p>';return;}
   const s=getProjStats(proj);
   const passRate=s.total>0?Math.round(s.pass/s.total*100):0;
-  const failRate=s.total>0?Math.round(s.fail/s.total*100):0;
   const pw=s.total>0?Math.round(s.pass/s.total*100):0,fw=s.total>0?Math.round(s.fail/s.total*100):0,bw=s.total>0?Math.round(s.blocked/s.total*100):0,sw=s.total>0?Math.round(s.skip/s.total*100):0,nw=Math.max(0,100-pw-fw-bw-sw);
   const recentRuns=repo.testRuns.filter(r=>r.project===proj).slice(-8).reverse();
+  
   cont.innerHTML=`
     <div class="db-grid" style="grid-template-columns:repeat(5,1fr)">
       <div class="db-stat-card"><div class="val">${s.total}</div><div class="lbl">TOTAL CASES</div></div>
-      <div class="db-stat-card"><div class="val" style="color:var(--pass)">${passRate}%</div><div class="lbl">PASS RATE</div></div>
-      <div class="db-stat-card"><div class="val" style="color:var(--fail)">${failRate}%</div><div class="lbl">FAIL RATE</div></div>
-      <div class="db-stat-card"><div class="val" style="color:var(--inprog)">${s.runs}</div><div class="lbl">TEST RUNS</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--inprog)">${s.coverage}%</div><div class="lbl">COVERAGE</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--pass)">${passRate}%</div><div class="lbl">PASS RATE (ALL)</div></div>
+      <div class="db-stat-card"><div class="val" style="color:var(--inprog)">${s.runs}</div><div class="lbl">TOTAL RUNS</div></div>
       <div class="db-stat-card"><div class="val" style="color:var(--pass)">${s.completedRuns}</div><div class="lbl">RUNS DONE</div></div>
     </div>
-    <div class="db-sec-title">Status Breakdown — ${esc(proj)}</div>
-    <div class="stack-bar">
-      <div class="stack-seg" style="width:${pw}%;background:var(--pass)"></div>
-      <div class="stack-seg" style="width:${fw}%;background:var(--fail)"></div>
-      <div class="stack-seg" style="width:${bw}%;background:var(--blocked)"></div>
-      <div class="stack-seg" style="width:${sw}%;background:var(--skip)"></div>
-      <div class="stack-seg" style="width:${nw}%;background:var(--notrun);opacity:.4"></div>
-    </div>
-    <div class="stack-legend">
-      <span class="ll"><span class="ld" style="background:var(--pass)"></span>Pass: ${s.pass}</span>
-      <span class="ll"><span class="ld" style="background:var(--fail)"></span>Fail: ${s.fail}</span>
-      <span class="ll"><span class="ld" style="background:var(--blocked)"></span>Blocked: ${s.blocked}</span>
-      <span class="ll"><span class="ld" style="background:var(--skip)"></span>Skipped: ${s.skip}</span>
-      <span class="ll"><span class="ld" style="background:var(--notrun)"></span>Untested: ${s.notrun}</span>
-    </div>
-    <div class="db-sec-title" style="margin-top:8px">Recent Test Runs</div>
-    ${recentRuns.length===0?'<p style="color:var(--muted);font-size:12px">No test runs yet. Go to <b>🧪 Test Runs</b> to create one.</p>':recentRuns.map(r=>{const rs=getRunStats(r.id);const complete=isRunComplete(r.id);const pct=rs.total>0?Math.round((rs.pass+rs.fail+rs.blocked+rs.skip)/rs.total*100):0;return`<div class="run-row" onclick="switchView('runs');selectRun('${r.id}')">
-      <div style="flex:1"><div class="rr-name">${esc(r.name)}</div><div class="rr-meta">v${esc(r.version)} · ${esc(r.date)} · ${rs.total} cases</div></div>
-      <div style="font-size:11px;display:flex;gap:6px;align-items:center">
-        <span style="color:var(--pass)">✅${rs.pass}</span><span style="color:var(--fail)">❌${rs.fail}</span><span style="color:var(--blocked)">🟠${rs.blocked}</span><span style="color:var(--skip)">⏭${rs.skip}</span>
+
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:24px">
+      <div>
+        <div class="db-sec-title">Overall Status Breakdown — ${esc(proj)}</div>
+        <div class="stack-bar">
+          <div class="stack-seg" style="width:${pw}%;background:var(--pass)"></div>
+          <div class="stack-seg" style="width:${fw}%;background:var(--fail)"></div>
+          <div class="stack-seg" style="width:${bw}%;background:var(--blocked)"></div>
+          <div class="stack-seg" style="width:${sw}%;background:var(--skip)"></div>
+          <div class="stack-seg" style="width:${nw}%;background:var(--notrun);opacity:.4"></div>
+        </div>
+        <div class="stack-legend">
+          <span class="ll"><span class="ld" style="background:var(--pass)"></span>Pass: ${s.pass}</span>
+          <span class="ll"><span class="ld" style="background:var(--fail)"></span>Fail: ${s.fail}</span>
+          <span class="ll"><span class="ld" style="background:var(--blocked)"></span>Blocked: ${s.blocked}</span>
+          <span class="ll"><span class="ld" style="background:var(--skip)"></span>Skipped: ${s.skip}</span>
+          <span class="ll"><span class="ld" style="background:var(--notrun)"></span>Untested: ${s.notrun}</span>
+        </div>
+
+        <div class="db-sec-title" style="margin-top:20px">Folder-wise Breakdown</div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--rad);overflow:hidden">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead>
+              <tr style="background:var(--card2);text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase">
+                <th style="padding:10px 14px">Folder</th>
+                <th style="padding:10px 14px">Progress</th>
+                <th style="padding:10px 14px;text-align:right">Pass/Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${Object.entries(s.catStats).filter(([n,st])=>st.total>0).map(([name,st])=>{
+                const pct=Math.round((st.pass+st.fail+st.blocked+st.skip)/st.total*100);
+                const ppct=Math.round(st.pass/st.total*100);
+                return `
+                  <tr style="border-top:1px solid var(--border)">
+                    <td style="padding:10px 14px;font-weight:600">${esc(name)}</td>
+                    <td style="padding:10px 14px;width:140px">
+                      <div style="height:6px;background:var(--card2);border-radius:3px;overflow:hidden;display:flex">
+                        <div style="width:${ppct}%;background:var(--pass)"></div>
+                        <div style="width:${Math.round(st.fail/st.total*100)}%;background:var(--fail)"></div>
+                        <div style="width:${Math.round(st.blocked/st.total*100)}%;background:var(--blocked)"></div>
+                        <div style="width:${Math.round(st.skip/st.total*100)}%;background:var(--skip)"></div>
+                      </div>
+                    </td>
+                    <td style="padding:10px 14px;text-align:right;color:var(--dim)">${st.pass} / ${st.total}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
-      <span class="run-badge" style="${complete?'background:rgba(34,197,94,.15);color:var(--pass)':'background:rgba(99,102,241,.15);color:var(--accent)'}">${complete?'Done':pct+'%'}</span>
-    </div>`;}).join('')}`;
+
+      <div>
+        <div class="db-sec-title">Recent Test Runs</div>
+        ${recentRuns.length===0?'<p style="color:var(--muted);font-size:12px">No test runs yet.</p>':recentRuns.map(r=>{
+          const rs=getRunStats(r.id);
+          const complete=isRunComplete(r.id);
+          const pct=rs.total>0?Math.round((rs.pass+rs.fail+rs.blocked+rs.skip)/rs.total*100):0;
+          return`<div class="run-row" style="margin-bottom:8px" onclick="switchView('runs');selectRun('${r.id}')">
+            <div style="flex:1"><div class="rr-name" style="font-size:12px">${esc(r.name)}</div><div class="rr-meta" style="font-size:10px">${esc(r.date)} · ${rs.total} cases</div></div>
+            <span class="run-badge" style="font-size:9px;${complete?'background:rgba(34,197,94,.15);color:var(--pass)':'background:rgba(99,102,241,.15);color:var(--accent)'}">${complete?'Done':pct+'%'}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
 }
 // Dashboard reads LIVE run results, not stale tc.status
 function getProjStats(proj){
@@ -905,33 +949,45 @@ function getProjStats(proj){
   const statusMap = {}; // caseId -> status
   allCases.forEach(tc => { statusMap[tc.id] = 0; });
 
-  // Sort runs by date/time to find latest results
-  const runs = repo.testRuns.filter(r => r.project === proj).sort((a,b) => new Date(a.date) - new Date(b.date));
+  // Sort runs by date then ID to find latest results reliably
+  const runs = repo.testRuns.filter(r => r.project === proj).sort((a,b) => {
+    const da = new Date(a.date), db = new Date(b.date);
+    if(da - db !== 0) return da - db;
+    return a.id.localeCompare(b.id);
+  });
   
   for(const run of runs){
     const res = repo.runResults[run.id] || {};
     for(const cid of run.caseIds){
       const r = res[cid];
-      // Capture the latest definitive result (Pass, Fail, Blocked, Skip)
-      if(r && (r.status === 2 || r.status === 3 || r.status === 4 || r.status === 5)) {
+      // Only overwrite if we have a definitive result (Pass, Fail, Blocked, Skip)
+      if(r && (r.status >= 2 && r.status <= 5)) {
         statusMap[cid] = r.status;
       }
     }
   }
 
   let pass=0, fail=0, blocked=0, skip=0, notrun=0;
+  const catStats = {}; 
+  repo.categories.forEach(c => { catStats[c] = {pass:0, fail:0, blocked:0, skip:0, notrun:0, total:0}; });
+
   allCases.forEach(tc => {
     const s = statusMap[tc.id];
-    if(s === 2) pass++;
-    else if(s === 3) fail++;
-    else if(s === 4) blocked++;
-    else if(s === 5) skip++;
-    else notrun++;
+    const cat = tc.category || 'Other';
+    if(!catStats[cat]) catStats[cat] = {pass:0, fail:0, blocked:0, skip:0, notrun:0, total:0};
+    catStats[cat].total++;
+    if(s === 2) { pass++; catStats[cat].pass++; }
+    else if(s === 3) { fail++; catStats[cat].fail++; }
+    else if(s === 4) { blocked++; catStats[cat].blocked++; }
+    else if(s === 5) { skip++; catStats[cat].skip++; }
+    else { notrun++; catStats[cat].notrun++; }
   });
 
   const total = allCases.length;
+  const executedCount = Object.keys(statusMap).filter(id => statusMap[id] > 0).length;
+  const coverage = total > 0 ? Math.round(executedCount / total * 100) : 0;
   const completedRuns = runs.filter(r => isRunComplete(r.id)).length;
-  return {total, pass, fail, blocked, skip, notrun, runs: runs.length, completedRuns};
+  return {total, pass, fail, blocked, skip, notrun, runs: runs.length, completedRuns, coverage, catStats};
 }
 
 // ── Test Cases List ──
