@@ -730,64 +730,13 @@ function applyRepo(data){
   if(!repo.autoScannedProjects)repo.autoScannedProjects=[];
   if(!repo.platforms)repo.platforms={};
 
-  // Set shadowRepo BEFORE migrations so that doSave detects the changes and syncs them to the server
-  shadowRepo=JSON.parse(JSON.stringify(repo));
-  
-  let migrated = false;
+  // Safe category migration (string type-only, no renaming)
   repo.testCases.forEach(tc => { 
-    if(typeof tc.category === 'number') { tc.category = repo.categories[tc.category] || 'Other'; migrated = true; }
+    if(typeof tc.category === 'number') tc.category = repo.categories[tc.category] || 'Other';
   });
 
-  // Migration for project-specific IDs
-  if(!repo.idMigratedToProjectSpecific) {
-    let idMapping = {};
-    
-    // Safety check: if a test case already looks like a project-specific ID (e.g. TC-001, TC-002 per project)
-    // and we have overlaps across projects, we shouldn't recklessly re-number them if they were already re-numbered.
-    // However, to be safe and ensure continuity, we'll re-map them once and force sync.
-    
-    // Sort test cases to keep their creation order during ID assignment
-    const sortedCases = [...repo.testCases];
-
-    repo.projects.forEach(proj => {
-      let counter = 1;
-      sortedCases.forEach(tc => {
-        if(tc.project === proj) {
-          const newId = `TC-${String(counter++).padStart(3,'0')}`;
-          if(tc.id !== newId) {
-            idMapping[tc.id] = newId;
-            tc.id = newId;
-          }
-        }
-      });
-    });
-
-    if(Object.keys(idMapping).length > 0) {
-      repo.testRuns.forEach(run => {
-        if(run.caseIds) run.caseIds = run.caseIds.map(oldId => idMapping[oldId] || oldId);
-      });
-      const newRunResults = {};
-      for(const runId in repo.runResults) {
-        newRunResults[runId] = {};
-        for(const oldId in repo.runResults[runId]) {
-          const newId = idMapping[oldId] || oldId;
-          newRunResults[runId][newId] = repo.runResults[runId][oldId];
-        }
-      }
-      repo.runResults = newRunResults;
-    }
-    repo.idMigratedToProjectSpecific = true;
-    migrated = true;
-  }
-
-  // Ensure activeProject is set so Dashboard doesn't crash or show empty
+  shadowRepo=JSON.parse(JSON.stringify(repo));
   if(repo.projects.length>0 && !activeProject) activeProject=repo.projects[0];
-
-  if(migrated) {
-    // Force a full save sequence since we modified cases, runs, and results
-    setTimeout(doSave, 1000); 
-  }
-
   renderAll(); renderRuns(); renderDashboard();
 }
 
