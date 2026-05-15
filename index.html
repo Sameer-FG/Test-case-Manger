@@ -731,35 +731,50 @@ function applyRepo(data){
   });
 
   // Migration for project-specific IDs
+  // SAFE: only run if there are actual cross-project TC-id collisions
   if(!repo.idMigratedToProjectSpecific) {
-    let idMapping = {};
-    repo.projects.forEach(proj => {
-      let counter = 1;
-      repo.testCases.forEach(tc => {
-        if(tc.project === proj) {
-          const newId = `TC-${String(counter++).padStart(3,'0')}`;
-          if(tc.id !== newId) {
-            idMapping[tc.id] = newId;
-            tc.id = newId;
-          }
-        }
-      });
+    // Check if any two projects share the same TC-xxx number
+    const idsByProject = {};
+    repo.projects.forEach(p => idsByProject[p] = new Set());
+    let hasConflict = false;
+    const globalIdCount = {};
+    repo.testCases.forEach(tc => {
+      globalIdCount[tc.id] = (globalIdCount[tc.id] || 0) + 1;
+      if(globalIdCount[tc.id] > 1) hasConflict = true;
     });
 
-    if(Object.keys(idMapping).length > 0) {
-      repo.testRuns.forEach(run => {
-        run.caseIds = run.caseIds.map(oldId => idMapping[oldId] || oldId);
+    if(hasConflict) {
+      // Only remap when there are actual duplicate IDs across projects
+      let idMapping = {};
+      repo.projects.forEach(proj => {
+        let counter = 1;
+        repo.testCases.forEach(tc => {
+          if(tc.project === proj) {
+            const newId = `TC-${String(counter++).padStart(3,'0')}`;
+            if(tc.id !== newId) {
+              idMapping[tc.id] = newId;
+              tc.id = newId;
+            }
+          }
+        });
       });
-      const newRunResults = {};
-      for(const runId in repo.runResults) {
-        newRunResults[runId] = {};
-        for(const oldId in repo.runResults[runId]) {
-          const newId = idMapping[oldId] || oldId;
-          newRunResults[runId][newId] = repo.runResults[runId][oldId];
+      if(Object.keys(idMapping).length > 0) {
+        repo.testRuns.forEach(run => {
+          run.caseIds = run.caseIds.map(oldId => idMapping[oldId] || oldId);
+        });
+        const newRunResults = {};
+        for(const runId in repo.runResults) {
+          newRunResults[runId] = {};
+          for(const oldId in repo.runResults[runId]) {
+            const newId = idMapping[oldId] || oldId;
+            newRunResults[runId][newId] = repo.runResults[runId][oldId];
+          }
         }
+        repo.runResults = newRunResults;
       }
-      repo.runResults = newRunResults;
+      migrated = true;
     }
+    // Always mark as done so this check never runs again
     repo.idMigratedToProjectSpecific = true;
     migrated = true;
   }
@@ -1935,7 +1950,54 @@ function openImportJSON(){document.getElementById('json-inp').click();}
 function handleImportJSON(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
-  reader.onload=ev=>{try{const data=JSON.parse(ev.target.result);(data.projects||[]).forEach(p=>{if(!repo.projects.includes(p))repo.projects.push(p);});const ex=new Set(repo.testCases.map(tc=>tc.id));let imp=0;(data.testCases||[]).forEach(tc=>{if(!ex.has(tc.id)){repo.testCases.push(tc);imp++;}});(data.testRuns||[]).forEach(r=>{if(!repo.testRuns.find(x=>x.id===r.id))repo.testRuns.push(r);});Object.assign(repo.runResults,data.runResults||{});repo.nextId=Math.max(repo.nextId,data.nextId||1);repo.nextRunId=Math.max(repo.nextRunId,data.nextRunId||1);if(repo.projects.length>0&&!activeProject)activeProject=repo.projects[0];save();renderAll();renderRuns();renderDashboard();alert(`✅ Imported ${imp} case(s).`);}catch(err){alert('❌ Invalid JSON: '+err.message);}e.target.value='';};
+  reader.onload=ev=>{
+    try{
+      const data=JSON.parse(ev.target.result);
+      const incomingCases = data.testCases||[];
+      const incomingCount = incomingCases.length;
+
+      // Ask user: merge or full restore?
+      const doRestore = incomingCount > 0 && confirm(
+        `Found ${incomingCount} test case(s) in "${file.name}".\n\n` +
+        `Click OK to do a FULL RESTORE (replaces everything with this file).\n` +
+        `Click Cancel to MERGE (only adds cases not already present).`
+      );
+
+      if(doRestore) {
+        // Full restore: replace repo with imported data entirely
+        data.idMigratedToProjectSpecific = true; // prevent re-migration
+        applyRepo(data);
+        save();
+        alert(`✅ Full restore complete — ${incomingCount} test case(s) loaded.`);
+      } else {
+        // Merge: add only cases not already present, matched by _id first then TC-id
+        (data.projects||[]).forEach(p=>{if(!repo.projects.includes(p))repo.projects.push(p);});
+        const existingMongoIds = new Set(repo.testCases.map(tc=>tc._id).filter(Boolean));
+        const existingTcIds   = new Set(repo.testCases.map(tc=>tc.id));
+        let imp=0;
+        incomingCases.forEach(tc=>{
+          // Skip if same MongoDB _id already exists, OR same TC-id in same project
+          const dupMongo = tc._id && existingMongoIds.has(tc._id);
+          const dupTc    = existingTcIds.has(tc.id) && repo.testCases.find(x=>x.id===tc.id&&x.project===tc.project);
+          if(!dupMongo && !dupTc){
+            repo.testCases.push(tc);
+            if(tc._id) existingMongoIds.add(tc._id);
+            existingTcIds.add(tc.id);
+            imp++;
+          }
+        });
+        (data.testRuns||[]).forEach(r=>{if(!repo.testRuns.find(x=>x.id===r.id))repo.testRuns.push(r);});
+        Object.assign(repo.runResults, data.runResults||{});
+        repo.nextId=Math.max(repo.nextId,data.nextId||1);
+        repo.nextRunId=Math.max(repo.nextRunId,data.nextRunId||1);
+        repo.idMigratedToProjectSpecific = true; // prevent re-migration on next load
+        if(repo.projects.length>0&&!activeProject)activeProject=repo.projects[0];
+        save();renderAll();renderRuns();renderDashboard();
+        alert(`✅ Merged ${imp} new case(s).`);
+      }
+    }catch(err){alert('❌ Invalid JSON: '+err.message);}
+    e.target.value='';
+  };
   reader.readAsText(file);
 }
 function exportJSON(){const b=new Blob([JSON.stringify(repo,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='TestRepository.json';a.click();URL.revokeObjectURL(a.href);}
