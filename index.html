@@ -901,30 +901,37 @@ function renderDashboard(){
 }
 // Dashboard reads LIVE run results, not stale tc.status
 function getProjStats(proj){
-  // Aggregate all pass/fail/etc from run results (live execution data)
-  let pass=0,fail=0,blocked=0,skip=0,notrun=0;
-  const runs=repo.testRuns.filter(r=>r.project===proj);
-  const allRunCaseIds = new Set(runs.flatMap(r=>r.caseIds));
-  for(const runId of runs.map(r=>r.id)){
-    const res=repo.runResults[runId]||{};
-    const run=repo.testRuns.find(r=>r.id===runId);
-    if(!run) continue;
+  const allCases = repo.testCases.filter(tc => tc.project === proj);
+  const statusMap = {}; // caseId -> status
+  allCases.forEach(tc => { statusMap[tc.id] = 0; });
+
+  // Sort runs by date/time to find latest results
+  const runs = repo.testRuns.filter(r => r.project === proj).sort((a,b) => new Date(a.date) - new Date(b.date));
+  
+  for(const run of runs){
+    const res = repo.runResults[run.id] || {};
     for(const cid of run.caseIds){
-      const r=res[cid];
-      if(!r||r.status===0) notrun++;
-      else if(r.status===2) pass++;
-      else if(r.status===3) fail++;
-      else if(r.status===4) blocked++;
-      else if(r.status===5) skip++;
+      const r = res[cid];
+      // Capture the latest definitive result (Pass, Fail, Blocked, Skip)
+      if(r && (r.status === 2 || r.status === 3 || r.status === 4 || r.status === 5)) {
+        statusMap[cid] = r.status;
+      }
     }
   }
-  // Also count cases not in any run as untested
-  const allCases=repo.testCases.filter(tc=>tc.project===proj);
-  const notInRun=allCases.filter(tc=>!allRunCaseIds.has(tc.id)).length;
-  notrun+=notInRun;
-  const total=allCases.length;
-  const completedRuns=runs.filter(r=>isRunComplete(r.id)).length;
-  return{total, pass, fail, blocked, skip, notrun, runs:runs.length, completedRuns};
+
+  let pass=0, fail=0, blocked=0, skip=0, notrun=0;
+  allCases.forEach(tc => {
+    const s = statusMap[tc.id];
+    if(s === 2) pass++;
+    else if(s === 3) fail++;
+    else if(s === 4) blocked++;
+    else if(s === 5) skip++;
+    else notrun++;
+  });
+
+  const total = allCases.length;
+  const completedRuns = runs.filter(r => isRunComplete(r.id)).length;
+  return {total, pass, fail, blocked, skip, notrun, runs: runs.length, completedRuns};
 }
 
 // ── Test Cases List ──
