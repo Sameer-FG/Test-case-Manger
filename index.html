@@ -723,8 +723,16 @@ function applyRepo(data){
   if(!repo.projects)repo.projects=[];
   if(!repo.categories||repo.categories.length===0)repo.categories=['UI','Gameplay','Economy','Audio','Settings','Network','Performance','Analytics','Other'];
   if(!repo.testCases)repo.testCases=[];
+  if(!repo.testRuns)repo.testRuns=[];
+  if(!repo.runResults)repo.runResults={};
+  if(!repo.nextId)repo.nextId=1;
+  if(!repo.nextRunId)repo.nextRunId=1;
+  if(!repo.autoScannedProjects)repo.autoScannedProjects=[];
+  if(!repo.platforms)repo.platforms={};
+
+  // Set shadowRepo BEFORE migrations so that doSave detects the changes and syncs them to the server
+  shadowRepo=JSON.parse(JSON.stringify(repo));
   
-  // Migration for old test cases with integer categories
   let migrated = false;
   repo.testCases.forEach(tc => { 
     if(typeof tc.category === 'number') { tc.category = repo.categories[tc.category] || 'Other'; migrated = true; }
@@ -733,9 +741,17 @@ function applyRepo(data){
   // Migration for project-specific IDs
   if(!repo.idMigratedToProjectSpecific) {
     let idMapping = {};
+    
+    // Safety check: if a test case already looks like a project-specific ID (e.g. TC-001, TC-002 per project)
+    // and we have overlaps across projects, we shouldn't recklessly re-number them if they were already re-numbered.
+    // However, to be safe and ensure continuity, we'll re-map them once and force sync.
+    
+    // Sort test cases to keep their creation order during ID assignment
+    const sortedCases = [...repo.testCases];
+
     repo.projects.forEach(proj => {
       let counter = 1;
-      repo.testCases.forEach(tc => {
+      sortedCases.forEach(tc => {
         if(tc.project === proj) {
           const newId = `TC-${String(counter++).padStart(3,'0')}`;
           if(tc.id !== newId) {
@@ -748,7 +764,7 @@ function applyRepo(data){
 
     if(Object.keys(idMapping).length > 0) {
       repo.testRuns.forEach(run => {
-        run.caseIds = run.caseIds.map(oldId => idMapping[oldId] || oldId);
+        if(run.caseIds) run.caseIds = run.caseIds.map(oldId => idMapping[oldId] || oldId);
       });
       const newRunResults = {};
       for(const runId in repo.runResults) {
@@ -764,16 +780,14 @@ function applyRepo(data){
     migrated = true;
   }
 
-  if(migrated) setTimeout(doSave, 1000); // trigger save to persist migration to server
-
-  if(!repo.testRuns)repo.testRuns=[];
-  if(!repo.runResults)repo.runResults={};
-  if(!repo.nextId)repo.nextId=1;
-  if(!repo.nextRunId)repo.nextRunId=1;
-  if(!repo.autoScannedProjects)repo.autoScannedProjects=[];
-  if(!repo.platforms)repo.platforms={};
-  shadowRepo=JSON.parse(JSON.stringify(repo));
+  // Ensure activeProject is set so Dashboard doesn't crash or show empty
   if(repo.projects.length>0 && !activeProject) activeProject=repo.projects[0];
+
+  if(migrated) {
+    // Force a full save sequence since we modified cases, runs, and results
+    setTimeout(doSave, 1000); 
+  }
+
   renderAll(); renderRuns(); renderDashboard();
 }
 
