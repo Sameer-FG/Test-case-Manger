@@ -705,17 +705,9 @@ async function load(){
   renderProfile();
 }
 function getNextTcId(proj) {
-  let maxId = 0;
-  repo.testCases.forEach(tc => {
-    if (tc.project === proj) {
-      const match = tc.id.match(/^TC-(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxId) maxId = num;
-      }
-    }
-  });
-  return `TC-${String(maxId + 1).padStart(3, '0')}`;
+  const id = `TC-${String(repo.nextId).padStart(3, '0')}`;
+  repo.nextId++;
+  return id;
 }
 
 function applyRepo(data){
@@ -730,54 +722,7 @@ function applyRepo(data){
     if(typeof tc.category === 'number') { tc.category = repo.categories[tc.category] || 'Other'; migrated = true; }
   });
 
-  // Migration for project-specific IDs
-  // SAFE: only run if there are actual cross-project TC-id collisions
-  if(!repo.idMigratedToProjectSpecific) {
-    // Check if any two projects share the same TC-xxx number
-    const idsByProject = {};
-    repo.projects.forEach(p => idsByProject[p] = new Set());
-    let hasConflict = false;
-    const globalIdCount = {};
-    repo.testCases.forEach(tc => {
-      globalIdCount[tc.id] = (globalIdCount[tc.id] || 0) + 1;
-      if(globalIdCount[tc.id] > 1) hasConflict = true;
-    });
-
-    if(hasConflict) {
-      // Only remap when there are actual duplicate IDs across projects
-      let idMapping = {};
-      repo.projects.forEach(proj => {
-        let counter = 1;
-        repo.testCases.forEach(tc => {
-          if(tc.project === proj) {
-            const newId = `TC-${String(counter++).padStart(3,'0')}`;
-            if(tc.id !== newId) {
-              idMapping[tc.id] = newId;
-              tc.id = newId;
-            }
-          }
-        });
-      });
-      if(Object.keys(idMapping).length > 0) {
-        repo.testRuns.forEach(run => {
-          run.caseIds = run.caseIds.map(oldId => idMapping[oldId] || oldId);
-        });
-        const newRunResults = {};
-        for(const runId in repo.runResults) {
-          newRunResults[runId] = {};
-          for(const oldId in repo.runResults[runId]) {
-            const newId = idMapping[oldId] || oldId;
-            newRunResults[runId][newId] = repo.runResults[runId][oldId];
-          }
-        }
-        repo.runResults = newRunResults;
-      }
-      migrated = true;
-    }
-    // Always mark as done so this check never runs again
-    repo.idMigratedToProjectSpecific = true;
-    migrated = true;
-  }
+  // Migration for project-specific IDs has been removed to revert to global sequence
 
   if(migrated) setTimeout(doSave, 1000); // trigger save to persist migration to server
 
@@ -1456,6 +1401,7 @@ function renderRunDetail(){
         <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">
           <button class="tbtn rs" style="padding:4px 10px;font-size:11px" onclick="navigator.clipboard.writeText(window.location.origin+window.location.pathname+'?run='+encodeURIComponent('${run.id}'));alert('Link copied to clipboard!')">🔗 Copy Link</button>
           <button class="tbtn" style="padding:4px 10px;font-size:11px;background:var(--card2);color:var(--txt)" onclick="openEditRunModal('${run.id}')">✏️ Edit Run</button>
+          <button class="tbtn" style="padding:4px 10px;font-size:11px;background:var(--card2);color:var(--pass)" onclick="exportRunToCSV('${run.id}')">⬇️ Export CSV</button>
         </div>
       </div>
       <div style="text-align:center">
@@ -1571,6 +1517,51 @@ function markRunCaseWithFail(runId,caseId,reason,bugLink){
   repo.runResults[runId][caseId]={status:3,failReason:reason,bugLink:bugLink};
   save();renderRunDetail();renderRuns();
 }
+function exportRunToCSV(runId) {
+  const run = repo.testRuns.find(r => r.id === runId);
+  if(!run) return;
+  const res = repo.runResults[runId] || {};
+  const statusMap = {0:'Untested', 1:'Pass', 2:'Fail', 3:'Blocked', 4:'Skipped'};
+  
+  let csv = "ID,Category,Summary,Priority,Status,Fail Reason,Steps\n";
+  const cases = run.caseIds.map(id => repo.testCases.find(t => t.id === id && t.project === run.project) || repo.testCases.find(t => t.id === id)).filter(Boolean);
+  
+  cases.forEach(tc => {
+    const st = res[tc.id];
+    const statusText = st ? statusMap[st.status] : 'Untested';
+    const failReason = (st && st.failReason) ? st.failReason : '';
+    let stepsText = "";
+    if(tc.steps && tc.steps.length > 0) {
+      stepsText = tc.steps.map(s => `${s.order}. ${s.description} | Expected: ${s.expectedResult}`).join('\n');
+    }
+    
+    const row = [
+      tc.id,
+      tc.category,
+      tc.summary,
+      tc.priority,
+      statusText,
+      failReason,
+      stepsText
+    ].map(field => {
+      const f = String(field || '');
+      if(f.includes(',') || f.includes('"') || f.includes('\n')) {
+        return '"' + f.replace(/"/g, '""') + '"';
+      }
+      return f;
+    });
+    
+    csv += row.join(',') + '\n';
+  });
+  
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `TestRun_${run.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 function deleteRun(runId){
   if(!confirm('Delete this test run and all its results?'))return;
   repo.testRuns=repo.testRuns.filter(r=>r.id!==runId);
