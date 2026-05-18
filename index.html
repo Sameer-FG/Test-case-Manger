@@ -1950,52 +1950,75 @@ function openImportJSON(){document.getElementById('json-inp').click();}
 function handleImportJSON(e){
   const file=e.target.files[0];if(!file)return;
   const reader=new FileReader();
-  reader.onload=ev=>{
+  reader.onload=async ev=>{
     try{
       const data=JSON.parse(ev.target.result);
       const incomingCases = data.testCases||[];
       const incomingCount = incomingCases.length;
 
-      // Ask user: merge or full restore?
       const doRestore = incomingCount > 0 && confirm(
         `Found ${incomingCount} test case(s) in "${file.name}".\n\n` +
-        `Click OK to do a FULL RESTORE (replaces everything with this file).\n` +
-        `Click Cancel to MERGE (only adds cases not already present).`
+        `Click OK \u2192 FULL RESTORE (replaces everything with this backup).\n` +
+        `Click Cancel \u2192 MERGE (only adds cases not already present).`
       );
 
-      if(doRestore) {
-        // Full restore: replace repo with imported data entirely
-        data.idMigratedToProjectSpecific = true; // prevent re-migration
-        applyRepo(data);
-        save();
-        alert(`✅ Full restore complete — ${incomingCount} test case(s) loaded.`);
+      if(doRestore){
+        // Stop polling so it cannot clobber us mid-save
+        stopPolling();
+
+        // Build a clean repo directly — do NOT call applyRepo() here because
+        // applyRepo sets shadowRepo=repo immediately, making doSave see zero diff
+        data.idMigratedToProjectSpecific = true;
+        if(!data.projects)   data.projects   = [];
+        if(!data.categories||data.categories.length===0)
+          data.categories=['UI','Gameplay','Economy','Audio','Settings','Network','Performance','Analytics','Other'];
+        if(!data.testCases)  data.testCases  = [];
+        if(!data.testRuns)   data.testRuns   = [];
+        if(!data.runResults) data.runResults = {};
+        if(!data.nextId)     data.nextId     = 1;
+        if(!data.nextRunId)  data.nextRunId  = 1;
+        if(!data.autoScannedProjects) data.autoScannedProjects = [];
+        if(!data.platforms)  data.platforms  = {};
+        repo = data;
+        if(repo.projects.length>0 && !activeProject) activeProject=repo.projects[0];
+
+        // Persist to localStorage immediately so UI shows all cases now
+        localStorage.setItem('tcm_repo', JSON.stringify(repo));
+
+        // Clear shadowRepo so doSave treats every case as "new" and pushes all to server
+        shadowRepo = { testCases:[], testRuns:[], runResults:{}, projects:[], categories:[] };
+        await doSave();
+
+        renderAll(); renderRuns(); renderDashboard();
+        startPolling();
+        alert(`\u2705 Full restore complete \u2014 ${incomingCount} test case(s) loaded across all projects.`);
+
       } else {
-        // Merge: add only cases not already present, matched by _id first then TC-id
+        // Merge: add cases not already present (match by MongoDB _id OR TC-id+project)
         (data.projects||[]).forEach(p=>{if(!repo.projects.includes(p))repo.projects.push(p);});
         const existingMongoIds = new Set(repo.testCases.map(tc=>tc._id).filter(Boolean));
-        const existingTcIds   = new Set(repo.testCases.map(tc=>tc.id));
+        const existingTcKeys   = new Set(repo.testCases.map(tc=>tc.id+'|'+tc.project));
         let imp=0;
         incomingCases.forEach(tc=>{
-          // Skip if same MongoDB _id already exists, OR same TC-id in same project
           const dupMongo = tc._id && existingMongoIds.has(tc._id);
-          const dupTc    = existingTcIds.has(tc.id) && repo.testCases.find(x=>x.id===tc.id&&x.project===tc.project);
+          const dupTc    = existingTcKeys.has(tc.id+'|'+tc.project);
           if(!dupMongo && !dupTc){
             repo.testCases.push(tc);
             if(tc._id) existingMongoIds.add(tc._id);
-            existingTcIds.add(tc.id);
+            existingTcKeys.add(tc.id+'|'+tc.project);
             imp++;
           }
         });
         (data.testRuns||[]).forEach(r=>{if(!repo.testRuns.find(x=>x.id===r.id))repo.testRuns.push(r);});
         Object.assign(repo.runResults, data.runResults||{});
-        repo.nextId=Math.max(repo.nextId,data.nextId||1);
-        repo.nextRunId=Math.max(repo.nextRunId,data.nextRunId||1);
-        repo.idMigratedToProjectSpecific = true; // prevent re-migration on next load
-        if(repo.projects.length>0&&!activeProject)activeProject=repo.projects[0];
-        save();renderAll();renderRuns();renderDashboard();
-        alert(`✅ Merged ${imp} new case(s).`);
+        repo.nextId=Math.max(repo.nextId||1, data.nextId||1);
+        repo.nextRunId=Math.max(repo.nextRunId||1, data.nextRunId||1);
+        repo.idMigratedToProjectSpecific = true;
+        if(repo.projects.length>0&&!activeProject) activeProject=repo.projects[0];
+        save(); renderAll(); renderRuns(); renderDashboard();
+        alert(`\u2705 Merged ${imp} new case(s).`);
       }
-    }catch(err){alert('❌ Invalid JSON: '+err.message);}
+    }catch(err){alert('\u274c Invalid JSON: '+err.message);}
     e.target.value='';
   };
   reader.readAsText(file);
