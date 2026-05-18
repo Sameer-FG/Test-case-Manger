@@ -239,6 +239,7 @@ html,body{height:100%;overflow:hidden;font-family:'Inter',system-ui,sans-serif;b
     <button class="hbtn" onclick="openGenModal()">⚡ Generate</button>
     <button class="hbtn" onclick="openImportJSON()">↓ Import JSON</button>
     <button class="hbtn" onclick="exportJSON()">↑ Export JSON</button>
+    <button class="hbtn" onclick="openLocalBackupsModal()" title="View and restore local backups" style="background:rgba(34,197,94,.12);color:var(--pass);border-color:rgba(34,197,94,.25)">🔒 Local Backups</button>
     <button class="hbtn ac" onclick="createCase()">＋ New Case</button>
     <div id="user-profile-widget" style="display:none;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:4px 10px 4px 6px;cursor:pointer;position:relative" onclick="toggleProfileMenu()">
       <div id="upw-avatar" style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:12px;flex-shrink:0">?</div>
@@ -679,7 +680,95 @@ async function doSave(){
     }catch(e){console.warn(e);}
   }
   localStorage.setItem('tcm_repo',JSON.stringify(repo));
+  autoBackup();
 }
+
+// ── Auto Local Backup ──
+const AUTO_BACKUP_KEY = 'tcm_auto_backups';
+const MAX_BACKUPS = 5;
+let _lastBackupTime = 0;
+function autoBackup() {
+  const now = Date.now();
+  if (now - _lastBackupTime < 30 * 60 * 1000) return; // max once per 30 min
+  _lastBackupTime = now;
+  try {
+    const snapshot = {
+      ts: new Date().toISOString(),
+      label: new Date().toLocaleString(),
+      caseCount: repo.testCases.length,
+      projects: repo.projects.slice(),
+      data: JSON.stringify(repo)
+    };
+    const raw = localStorage.getItem(AUTO_BACKUP_KEY);
+    const backups = raw ? JSON.parse(raw) : [];
+    backups.unshift(snapshot);
+    if (backups.length > MAX_BACKUPS) backups.length = MAX_BACKUPS;
+    localStorage.setItem(AUTO_BACKUP_KEY, JSON.stringify(backups));
+    console.log('[TCM] Auto-backup saved:', snapshot.label, `(${snapshot.caseCount} cases)`);
+  } catch(e) { console.warn('[TCM] Auto-backup failed:', e); }
+}
+function openLocalBackupsModal() {
+  const raw = localStorage.getItem(AUTO_BACKUP_KEY);
+  const backups = raw ? JSON.parse(raw) : [];
+  const rows = backups.length === 0
+    ? '<p style="color:var(--muted);font-size:13px;padding:12px 0">No local backups yet. Backups are saved automatically every 30 minutes.</p>'
+    : backups.map((b, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--card2)">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${esc(b.label)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${b.caseCount} test cases · ${(b.projects||[]).join(', ')}</div>
+        </div>
+        <button class="cb" style="background:rgba(34,197,94,.15);color:var(--pass);border:1px solid rgba(34,197,94,.3);padding:5px 12px;font-size:11px" onclick="restoreFromLocalBackup(${i})">↩ Restore</button>
+        <button class="cb" style="background:transparent;color:var(--muted);border:1px solid var(--border);padding:5px 12px;font-size:11px" onclick="downloadLocalBackup(${i})">⬇ Download</button>
+      </div>`).join('');
+  showModal(`<div class="mh"><h2>🔒 Local Backups</h2><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb">
+    <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Up to ${MAX_BACKUPS} automatic backups are saved locally every 30 minutes in your browser. These are <b>device-specific</b> and survive server failures.</p>
+    ${rows}
+  </div>
+  <div class="mf"><button class="cb gh" onclick="closeModal()">Close</button></div>`);
+}
+function restoreFromLocalBackup(index) {
+  const raw = localStorage.getItem(AUTO_BACKUP_KEY);
+  const backups = raw ? JSON.parse(raw) : [];
+  if (!backups[index]) return;
+  if (!confirm(`Restore backup from ${backups[index].label}?\nThis will overwrite your current data on the SERVER with this backup.`)) return;
+  try {
+    const data = JSON.parse(backups[index].data);
+    // Use the full-restore API to push to server atomically
+    fetch('/api/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': teamKey },
+      body: JSON.stringify({ repo: data })
+    }).then(r => {
+      if (r.ok) {
+        applyRepo(data);
+        closeModal();
+        alert('✅ Backup restored successfully! The server has been updated.');
+      } else {
+        alert('⚠️ Server restore failed. Applying data locally only.');
+        applyRepo(data);
+        closeModal();
+      }
+    }).catch(() => {
+      alert('⚠️ Server unreachable. Applying data locally only.');
+      applyRepo(data);
+      closeModal();
+    });
+  } catch(e) { alert('Failed to parse backup: ' + e.message); }
+}
+function downloadLocalBackup(index) {
+  const raw = localStorage.getItem(AUTO_BACKUP_KEY);
+  const backups = raw ? JSON.parse(raw) : [];
+  if (!backups[index]) return;
+  const blob = new Blob([backups[index].data], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `TCM_Backup_${backups[index].label.replace(/[^a-zA-Z0-9]/g,'_')}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 async function load(){
   // 1. Paint from localStorage immediately so page is never blank on refresh
   const cached = localStorage.getItem('tcm_repo');
