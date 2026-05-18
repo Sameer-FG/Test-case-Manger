@@ -1391,7 +1391,10 @@ function renderRunDetail(){
   const s=getRunStats(run.id);const done=isRunComplete(run.id);
   const pct=s.total>0?Math.round((s.pass+s.fail+s.blocked+s.skip)/s.total*100):0;
   const res=repo.runResults[run.id]||{};
-  const cases=run.caseIds.map(id=>repo.testCases.find(tc=>tc.id===id)).filter(Boolean);
+  const cases = run.caseIds.map(id => {
+    if (run.project) return repo.testCases.find(tc => tc.id === id && tc.project === run.project);
+    return repo.testCases.find(tc => tc.id === id);
+  }).filter(Boolean);
   det.innerHTML=`
     ${done?`<div class="run-complete-banner">✅ Test run complete! All ${s.total} cases have been executed.</div>`:''}
     <div class="run-hdr">
@@ -1524,7 +1527,10 @@ function exportRunToCSV(runId) {
   const statusMap = {0:'Untested', 1:'Pass', 2:'Fail', 3:'Blocked', 4:'Skipped'};
   
   let csv = "ID,Category,Summary,Priority,Status,Fail Reason,Steps\n";
-  const cases = run.caseIds.map(id => repo.testCases.find(t => t.id === id && t.project === run.project) || repo.testCases.find(t => t.id === id)).filter(Boolean);
+  const cases = run.caseIds.map(id => {
+    if (run.project) return repo.testCases.find(tc => tc.id === id && tc.project === run.project);
+    return repo.testCases.find(tc => tc.id === id);
+  }).filter(Boolean);
   
   cases.forEach(tc => {
     const st = res[tc.id];
