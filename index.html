@@ -1392,12 +1392,8 @@ function renderRunDetail(){
   const pct=s.total>0?Math.round((s.pass+s.fail+s.blocked+s.skip)/s.total*100):0;
   const res=repo.runResults[run.id]||{};
   const cases = run.caseIds.map(id => {
-    let tc;
-    if (run.project) tc = repo.testCases.find(tc => tc.id === id && tc.project === run.project);
-    else tc = repo.testCases.find(tc => tc.id === id);
-    if (!tc) tc = { id: id, project: run.project || '', summary: '[Deleted/Missing Test Case]', category: 'Unknown', priority: 3, steps: [] };
-    return tc;
-  });
+    return repo.testCases.find(tc => tc.id === id && tc.project === run.project) || repo.testCases.find(tc => tc.id === id);
+  }).filter(Boolean);
   det.innerHTML=`
     ${done?`<div class="run-complete-banner">✅ Test run complete! All ${s.total} cases have been executed.</div>`:''}
     <div class="run-hdr">
@@ -1531,12 +1527,8 @@ function exportRunToCSV(runId) {
   
   let csv = "ID,Category,Summary,Priority,Status,Fail Reason,Steps\n";
   const cases = run.caseIds.map(id => {
-    let tc;
-    if (run.project) tc = repo.testCases.find(tc => tc.id === id && tc.project === run.project);
-    else tc = repo.testCases.find(tc => tc.id === id);
-    if (!tc) tc = { id: id, project: run.project || '', summary: '[Deleted/Missing Test Case]', category: 'Unknown', priority: 3, steps: [] };
-    return tc;
-  });
+    return repo.testCases.find(tc => tc.id === id && tc.project === run.project) || repo.testCases.find(tc => tc.id === id);
+  }).filter(Boolean);
   
   cases.forEach(tc => {
     const st = res[tc.id];
