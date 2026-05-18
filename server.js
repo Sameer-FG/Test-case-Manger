@@ -1,6 +1,37 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+c
+// Full Restore — atomically replaces ALL data in MongoDB with the provided repo
+app.post('/api/restore', async (req, res) => {
+  try {
+    const { repo } = req.body;
+    if (!repo) return res.status(400).json({ error: 'No repo data provided' });
+    if (db) {
+      await db.collection('testCases').deleteMany({});
+      await db.collection('testRuns').deleteMany({});
+      await db.collection('runResults').deleteMany({});
+      if (repo.testCases && repo.testCases.length) {
+        const docs = repo.testCases.map(c => { const d={...c}; delete d._id; return d; });
+        await db.collection('testCases').insertMany(docs);
+      }
+      if (repo.testRuns && repo.testRuns.length) {
+        const docs = repo.testRuns.map(r => { const d={...r}; delete d._id; return d; });
+        await db.collection('testRuns').insertMany(docs);
+      }
+      for (const [runId, data] of Object.entries(repo.runResults || {})) {
+        await db.collection('runResults').updateOne({ id: runId }, { $set: { data } }, { upsert: true });
+      }
+      await db.collection('meta').updateOne({ id: 'main' }, {
+        $set: { projects: repo.projects||[], categories: repo.categories||[], nextId: repo.nextId||1, nextRunId: repo.nextRunId||1 }
+      }, { upsert: true });
+      res.json({ ok: true, restored: repo.testCases?.length || 0 });
+    } else {
+      const dataFile = require('path').join(__dirname, 'TestRepository.json');
+      require('fs').writeFileSync(dataFile, JSON.stringify(repo, null, 2), 'utf8');
+      res.json({ ok: true, restored: repo.testCases?.length || 0 });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});onst cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -103,7 +134,11 @@ app.post('/api/sync', async (req, res) => {
       // Upsert Cases
       if (updatedCases && updatedCases.length) {
         const bulk = db.collection('testCases').initializeUnorderedBulkOp();
-        updatedCases.forEach(c => { const doc={...c}; delete doc._id; bulk.find({ id: c.id }).upsert().updateOne({ $set: doc }); });
+        updatedCases.forEach(c => {
+          const doc={...c}; delete doc._id;
+          // Use compound key {id, project} so TC-001 in "Project A" and TC-001 in "Project B" are distinct
+          bulk.find({ id: c.id, project: c.project }).upsert().updateOne({ $set: doc });
+        });
         await bulk.execute();
       }
       // Delete Cases
@@ -149,6 +184,36 @@ app.post('/api/sync', async (req, res) => {
 });
 
 
+// Full Restore - atomically replaces ALL data in MongoDB
+app.post('/api/restore', async (req, res) => {
+  try {
+    const { repo } = req.body;
+    if (!repo) return res.status(400).json({ error: 'No repo data provided' });
+    if (db) {
+      await db.collection('testCases').deleteMany({});
+      await db.collection('testRuns').deleteMany({});
+      await db.collection('runResults').deleteMany({});
+      if (repo.testCases && repo.testCases.length) {
+        const docs = repo.testCases.map(c => { const d={...c}; delete d._id; return d; });
+        await db.collection('testCases').insertMany(docs);
+      }
+      if (repo.testRuns && repo.testRuns.length) {
+        const docs = repo.testRuns.map(r => { const d={...r}; delete d._id; return d; });
+        await db.collection('testRuns').insertMany(docs);
+      }
+      for (const [runId, data] of Object.entries(repo.runResults || {})) {
+        await db.collection('runResults').updateOne({ id: runId }, { $set: { data } }, { upsert: true });
+      }
+      await db.collection('meta').updateOne({ id: 'main' }, {
+        $set: { projects: repo.projects||[], categories: repo.categories||[], nextId: repo.nextId||1, nextRunId: repo.nextRunId||1 }
+      }, { upsert: true });
+      res.json({ ok: true, restored: (repo.testCases||[]).length });
+    } else {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(repo, null, 2), 'utf8');
+      res.json({ ok: true, restored: (repo.testCases||[]).length });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // Slack Webhook Proxy
 app.post('/api/slack', async (req, res) => {
   if (!SLACK_WEBHOOK) return res.json({ skipped: true });
