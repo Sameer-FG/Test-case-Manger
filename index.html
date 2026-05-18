@@ -964,9 +964,9 @@ function updateBulkBar(){
 function deleteSelectedCases(){
   if(!selectedCases.size)return;
   if(!confirm('Delete '+selectedCases.size+' selected test cases?'))return;
-  repo.testCases=repo.testCases.filter(x=>!selectedCases.has(x.id));
+  repo.testCases=repo.testCases.filter(x=>!(selectedCases.has(x.id) && x.project===activeProject));
   selectedCases.clear();
-  if(!repo.testCases.find(x=>x.id===selectedId))selectedId='';
+  if(!repo.testCases.find(x=>x.id===selectedId && x.project===activeProject))selectedId='';
   save();renderAll();renderDashboard();
 }
 
@@ -1179,7 +1179,7 @@ function deleteDuplicates() {
 function selectCase(id){selectedId=id;renderList();renderDetail();}
 function renderDetail(){
   const ph=document.getElementById('dp'),det=document.getElementById('dd');
-  const tc=repo.testCases.find(x=>x.id===selectedId);
+  const tc=repo.testCases.find(x=>x.id===selectedId && x.project===activeProject);
   if(!tc){ph.style.display='flex';det.style.display='none';return;}
   ph.style.display='none';det.style.display='block';
   const running=timers[tc.id]?.running;
@@ -1263,7 +1263,7 @@ function createCase(){
   logHistory(tc, 'Created test case');
   repo.testCases.push(tc);save();renderAll();selectCase(tc.id);switchView('cases');
 }
-function deleteCase(id){if(!confirm('Delete this test case?'))return;repo.testCases=repo.testCases.filter(x=>x.id!==id);selectedId='';save();renderAll();}
+function deleteCase(id){if(!confirm('Delete this test case?'))return;repo.testCases=repo.testCases.filter(x=>!(x.id===id && x.project===activeProject));selectedId='';save();renderAll();}
 function createCaseInCategory(cat){
   if(!activeProject){alert('Please select a project first.');return;}
   const tc={id:getNextTcId(activeProject),project:activeProject,summary:'New test case',priority:1,category:cat||repo.categories[0]||'Other',status:0,failReason:'',bugLink:'',
@@ -1273,31 +1273,31 @@ function createCaseInCategory(cat){
 }
 
 function syncStepDOM(tcId) {
-  const tc = repo.testCases.find(x=>x.id===tcId); if(!tc)return;
+  const tc = repo.testCases.find(x=>x.id===tcId && x.project===activeProject); if(!tc)return;
   const descAreas = document.querySelectorAll(`textarea[oninput*="'description'"]`);
   const expAreas = document.querySelectorAll(`textarea[oninput*="'expectedResult'"]`);
   descAreas.forEach((ta, idx) => { if(tc.steps[idx]) tc.steps[idx].description = ta.value; });
   expAreas.forEach((ta, idx) => { if(tc.steps[idx]) tc.steps[idx].expectedResult = ta.value; });
 }
 
-function addStep(tcId){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.push({order:tc.steps.length+1,description:'',expectedResult:'',actualResult:'',status:0});logHistory(tc,'Added a new step');save();renderDetail();}
-function removeStep(tcId,i){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;tc.steps.splice(i,1);tc.steps.forEach((s,j)=>s.order=j+1);logHistory(tc,`Removed step ${i+1}`);save();renderDetail();}
-function uf(tcId,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
+function addStep(tcId){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId && x.project===activeProject);if(!tc)return;tc.steps.push({order:tc.steps.length+1,description:'',expectedResult:'',actualResult:'',status:0});logHistory(tc,'Added a new step');save();renderDetail();}
+function removeStep(tcId,i){syncStepDOM(tcId);const tc=repo.testCases.find(x=>x.id===tcId && x.project===activeProject);if(!tc)return;tc.steps.splice(i,1);tc.steps.forEach((s,j)=>s.order=j+1);logHistory(tc,`Removed step ${i+1}`);save();renderDetail();}
+function uf(tcId,field,val){const tc=repo.testCases.find(x=>x.id===tcId && x.project===activeProject);if(!tc)return;
   const oldVal = tc[field];
   tc[field]=typeof tc[field]==='number'?+val:val;
   if(oldVal !== tc[field]) logHistory(tc, '', field, oldVal, tc[field]);
   save();renderList();
 }
-function us(tcId,i,field,val){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
+function us(tcId,i,field,val){const tc=repo.testCases.find(x=>x.id===tcId && x.project===activeProject);if(!tc)return;
   const oldVal = tc.steps[i][field];
   tc.steps[i][field]=val;
   if(oldVal !== val) logHistory(tc, '', `step ${i+1} ${field}`, oldVal, val);
   save();
 }
-function markCase(tcId,status){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=status;tc.lastRunAt=now();if(status!==3){tc.failReason='';tc.bugLink='';}logHistory(tc, `Marked case status to ${['Untested','WIP','Pass','Fail','Blocked','Skip'][status]}`);save();renderAll();selectCase(tcId);}
-function markCaseWithFail(tcId,reason,bugLink){const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;stopTimer(tcId);tc.status=3;tc.failReason=reason;tc.bugLink=bugLink;tc.lastRunAt=now();logHistory(tc, `Marked case as Failed. Reason: ${reason}`);save();renderAll();selectCase(tcId);}
+function markCase(tcId,status){const tc=repo.testCases.find(x=>x.id===tcId && x.project===activeProject);if(!tc)return;stopTimer(tcId);tc.status=status;tc.lastRunAt=now();if(status!==3){tc.failReason='';tc.bugLink='';}logHistory(tc, `Marked case status to ${['Untested','WIP','Pass','Fail','Blocked','Skip'][status]}`);save();renderAll();selectCase(tcId);}
+function markCaseWithFail(tcId,reason,bugLink){const tc=repo.testCases.find(x=>x.id===tcId && x.project===activeProject);if(!tc)return;stopTimer(tcId);tc.status=3;tc.failReason=reason;tc.bugLink=bugLink;tc.lastRunAt=now();logHistory(tc, `Marked case as Failed. Reason: ${reason}`);save();renderAll();selectCase(tcId);}
 function markStep(tcId,i,status){
-  const tc=repo.testCases.find(x=>x.id===tcId);if(!tc)return;
+  const tc=repo.testCases.find(x=>x.id===tcId && x.project===activeProject);if(!tc)return;
   const oldStatus = tc.steps[i].status;
   tc.steps[i].status=status;
   if(oldStatus !== status) logHistory(tc, `Marked step ${i+1} status to ${['Untested','WIP','Pass','Fail','Blocked','Skip'][status]}`);
@@ -1330,10 +1330,10 @@ function doFail(){
 }
 
 // ── Timer ──
-function getElapsed(id){const t=timers[id],tc=repo.testCases.find(x=>x.id===id),base=tc?tc.durationSeconds:0;if(!t)return base;return t.running?(Date.now()-t.start)/1000+t.elapsed:t.elapsed;}
-function startTimer(id){const tc=repo.testCases.find(x=>x.id===id);if(!tc)return;const base=timers[id]?timers[id].elapsed:tc.durationSeconds;timers[id]={start:Date.now(),elapsed:base,running:true};tc.status=Math.max(tc.status,1);save();renderDetail();renderList();}
-function stopTimer(id){const t=timers[id];if(!t||!t.running)return;t.elapsed=getElapsed(id);t.running=false;const tc=repo.testCases.find(x=>x.id===id);if(tc){tc.durationSeconds=t.elapsed;save();}renderDetail();renderList();}
-function resetTimer(id){timers[id]={start:0,elapsed:0,running:false};const tc=repo.testCases.find(x=>x.id===id);if(tc){tc.durationSeconds=0;save();}renderDetail();renderList();}
+function getElapsed(id){const t=timers[id],tc=repo.testCases.find(x=>x.id===id && x.project===activeProject),base=tc?tc.durationSeconds:0;if(!t)return base;return t.running?(Date.now()-t.start)/1000+t.elapsed:t.elapsed;}
+function startTimer(id){const tc=repo.testCases.find(x=>x.id===id && x.project===activeProject);if(!tc)return;const base=timers[id]?timers[id].elapsed:tc.durationSeconds;timers[id]={start:Date.now(),elapsed:base,running:true};tc.status=Math.max(tc.status,1);save();renderDetail();renderList();}
+function stopTimer(id){const t=timers[id];if(!t||!t.running)return;t.elapsed=getElapsed(id);t.running=false;const tc=repo.testCases.find(x=>x.id===id && x.project===activeProject);if(tc){tc.durationSeconds=t.elapsed;save();}renderDetail();renderList();}
+function resetTimer(id){timers[id]={start:0,elapsed:0,running:false};const tc=repo.testCases.find(x=>x.id===id && x.project===activeProject);if(tc){tc.durationSeconds=0;save();}renderDetail();renderList();}
 setInterval(()=>{for(const id in timers){if(!timers[id].running)continue;const el=document.getElementById('tv-'+id);if(el)el.textContent=fmtD(getElapsed(id));}},500);
 
 // ── Test Runs ──
