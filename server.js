@@ -1,37 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-c
-// Full Restore — atomically replaces ALL data in MongoDB with the provided repo
-app.post('/api/restore', async (req, res) => {
-  try {
-    const { repo } = req.body;
-    if (!repo) return res.status(400).json({ error: 'No repo data provided' });
-    if (db) {
-      await db.collection('testCases').deleteMany({});
-      await db.collection('testRuns').deleteMany({});
-      await db.collection('runResults').deleteMany({});
-      if (repo.testCases && repo.testCases.length) {
-        const docs = repo.testCases.map(c => { const d={...c}; delete d._id; return d; });
-        await db.collection('testCases').insertMany(docs);
-      }
-      if (repo.testRuns && repo.testRuns.length) {
-        const docs = repo.testRuns.map(r => { const d={...r}; delete d._id; return d; });
-        await db.collection('testRuns').insertMany(docs);
-      }
-      for (const [runId, data] of Object.entries(repo.runResults || {})) {
-        await db.collection('runResults').updateOne({ id: runId }, { $set: { data } }, { upsert: true });
-      }
-      await db.collection('meta').updateOne({ id: 'main' }, {
-        $set: { projects: repo.projects||[], categories: repo.categories||[], nextId: repo.nextId||1, nextRunId: repo.nextRunId||1 }
-      }, { upsert: true });
-      res.json({ ok: true, restored: repo.testCases?.length || 0 });
-    } else {
-      const dataFile = require('path').join(__dirname, 'TestRepository.json');
-      require('fs').writeFileSync(dataFile, JSON.stringify(repo, null, 2), 'utf8');
-      res.json({ ok: true, restored: repo.testCases?.length || 0 });
-    }
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});onst cors = require('cors');
+const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -56,14 +25,12 @@ if (MONGODB_URI) {
   }).catch(err => console.error('MongoDB error:', err));
 }
 
-app.use(express.json({ limit: '20mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 app.use(express.static(__dirname, { index: 'index.html', setHeaders: (res, fp) => { if (fp.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
 
-// Auth Middleware (No longer checks Team Key)
-app.use('/api', (req, res, next) => {
-  next();
-});
+// Auth Middleware
+app.use('/api', (req, res, next) => { next(); });
 
 app.get('/api/ping', (_, res) => res.json({ ok: true, isDb: !!db }));
 app.get('/api/check-auth', (req, res) => res.json({ locked: false, ok: true }));
@@ -85,28 +52,20 @@ app.get('/api/repo', async (_, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Merge helper (prevents overwrite on concurrent saves) ──
+// Merge helper (prevents overwrite on concurrent saves)
 function mergeRepos(existing, incoming) {
-  // Projects: union — never loses anyone's projects
   const projects = [...new Set([...(existing.projects||[]), ...(incoming.projects||[])])];
-
-  // Test Cases: upsert by id — incoming wins for same id (latest edit wins)
   const casesMap = {};
-  (existing.testCases||[]).forEach(c => casesMap[c.id] = c);
-  (incoming.testCases||[]).forEach(c => casesMap[c.id] = c);
-
-  // Test Runs: upsert by id
+  (existing.testCases||[]).forEach(c => casesMap[c.id + '|' + c.project] = c);
+  (incoming.testCases||[]).forEach(c => casesMap[c.id + '|' + c.project] = c);
   const runsMap = {};
   (existing.testRuns||[]).forEach(r => runsMap[r.id] = r);
   (incoming.testRuns||[]).forEach(r => runsMap[r.id] = r);
-
-  // Run Results: merge per run, then per case inside each run
   const runResults = {};
   const allRunIds = new Set([...Object.keys(existing.runResults||{}), ...Object.keys(incoming.runResults||{})]);
   for (const rid of allRunIds) {
     runResults[rid] = { ...(existing.runResults?.[rid]||{}), ...(incoming.runResults?.[rid]||{}) };
   }
-
   return {
     projects,
     testCases: Object.values(casesMap),
@@ -119,40 +78,39 @@ function mergeRepos(existing, incoming) {
   };
 }
 
-// Sync Granular Changes — always merges, never overwrites
+// Sync Granular Changes
 app.post('/api/sync', async (req, res) => {
   try {
     const { projects, categories, nextId, nextRunId, updatedCases, updatedRuns, updatedResults, fullRepoFallback } = req.body;
     if (db) {
-      // Projects: $addToSet so we never lose a teammate's project
-      // Categories: $set so we can support renaming and deleting
       const updateObj = { $set: { nextId: nextId||1, nextRunId: nextRunId||1 } };
       if (categories && categories.length) updateObj.$set.categories = categories;
       if (projects && projects.length) updateObj.$addToSet = { projects: { $each: projects } };
-      
       await db.collection('meta').updateOne({ id: 'main' }, updateObj, { upsert: true });
-      // Upsert Cases
+
+      // Upsert Cases — use compound key {id, project} so TC-001 in different projects are distinct
       if (updatedCases && updatedCases.length) {
         const bulk = db.collection('testCases').initializeUnorderedBulkOp();
         updatedCases.forEach(c => {
-          const doc={...c}; delete doc._id;
-          // Use compound key {id, project} so TC-001 in "Project A" and TC-001 in "Project B" are distinct
+          const doc = {...c}; delete doc._id;
           bulk.find({ id: c.id, project: c.project }).upsert().updateOne({ $set: doc });
         });
         await bulk.execute();
       }
+
       // Delete Cases
       if (req.body.deletedCases && req.body.deletedCases.length) {
         await db.collection('testCases').deleteMany({ id: { $in: req.body.deletedCases } });
       }
-      
+
       // Upsert Runs
       if (updatedRuns && updatedRuns.length) {
         const bulk = db.collection('testRuns').initializeUnorderedBulkOp();
         updatedRuns.forEach(r => { const doc={...r}; delete doc._id; bulk.find({ id: r.id }).upsert().updateOne({ $set: doc }); });
         await bulk.execute();
       }
-      // Upsert Results — merge per-case, don't overwrite whole run
+
+      // Upsert Results
       if (updatedResults) {
         for (const [runId, data] of Object.entries(updatedResults)) {
           const existing = await db.collection('runResults').findOne({ id: runId });
@@ -160,16 +118,16 @@ app.post('/api/sync', async (req, res) => {
           await db.collection('runResults').updateOne({ id: runId }, { $set: { data: merged } }, { upsert: true });
         }
       }
-      
+
       // Delete Runs
       if (req.body.deletedRuns && req.body.deletedRuns.length) {
         await db.collection('testRuns').deleteMany({ id: { $in: req.body.deletedRuns } });
         await db.collection('runResults').deleteMany({ id: { $in: req.body.deletedRuns } });
       }
-      
+
       res.json({ ok: true });
     } else {
-      // Local file fallback — MERGE, never overwrite
+      // Local file fallback
       if (fullRepoFallback) {
         let existing = { projects:[], testCases:[], testRuns:[], runResults:{}, nextId:1, nextRunId:1 };
         if (fs.existsSync(DATA_FILE)) {
@@ -183,8 +141,7 @@ app.post('/api/sync', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-
-// Full Restore - atomically replaces ALL data in MongoDB
+// Full Restore — atomically replaces ALL data (wipe + insert)
 app.post('/api/restore', async (req, res) => {
   try {
     const { repo } = req.body;
@@ -214,6 +171,7 @@ app.post('/api/restore', async (req, res) => {
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
 // Slack Webhook Proxy
 app.post('/api/slack', async (req, res) => {
   if (!SLACK_WEBHOOK) return res.json({ skipped: true });
