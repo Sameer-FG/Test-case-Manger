@@ -1019,10 +1019,12 @@ function renderCaseHistory(tcId) {
     const res = repo.runResults[r.id] && repo.runResults[r.id][tcId];
     const st = res ? res.status : 0;
     const isFail = st === 3;
+    const executedBy = res && res.executedBy ? res.executedBy : (r.testerName || 'Unknown');
     return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:12px;">
       <span style="color:${SC[st]};width:65px;font-weight:600">${STATUS[st]}</span>
       <span style="color:var(--dim);width:75px">${r.date}</span>
       <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)} <span style="color:var(--dim)">v${esc(r.version)}</span></span>
+      <span style="color:var(--dim);font-size:11px;width:100px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="Executed by ${esc(executedBy)}">👤 ${esc(executedBy)}</span>
       ${isFail && res.failReason ? `<span style="color:var(--fail);font-size:11px;cursor:help" title="${esc(res.failReason)}">📄 Reason</span>` : ''}
     </div>`;
   }).join('');
@@ -1555,13 +1557,18 @@ function renderRunDetail(){
 }
 function markRunCase(runId,caseId,status){
   if(!repo.runResults[runId])repo.runResults[runId]={};
-  repo.runResults[runId][caseId]={status,failReason:'',bugLink:''};
+  const executedBy = userProfile ? userProfile.name : 'Unknown';
+  repo.runResults[runId][caseId]={status,failReason:'',bugLink:'', executedBy};
   save();renderRunDetail();renderRuns();
   if(document.getElementById('view-dashboard').classList.contains('on'))renderDashboard();
 }
 function updateRunResultWithFail(caseId, reason, bugLink) {
   const r = repo.runResults[selectedRunId];
-  if (r) { r[caseId] = { status:3, failReason:reason, bugLink:bugLink }; save(); renderRunDetail(); renderRuns(); }
+  if (r) { 
+    const executedBy = userProfile ? userProfile.name : 'Unknown';
+    r[caseId] = { status:3, failReason:reason, bugLink:bugLink, executedBy }; 
+    save(); renderRunDetail(); renderRuns(); 
+  }
 }
 
 async function triggerSlackSync(runId) {
@@ -1605,7 +1612,8 @@ async function triggerSlackSync(runId) {
 
 function markRunCaseWithFail(runId,caseId,reason,bugLink){
   if(!repo.runResults[runId])repo.runResults[runId]={};
-  repo.runResults[runId][caseId]={status:3,failReason:reason,bugLink:bugLink};
+  const executedBy = userProfile ? userProfile.name : 'Unknown';
+  repo.runResults[runId][caseId]={status:3,failReason:reason,bugLink:bugLink, executedBy};
   save();renderRunDetail();renderRuns();
 }
 function exportRunToCSV(runId) {
