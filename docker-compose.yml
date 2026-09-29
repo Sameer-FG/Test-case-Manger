@@ -5,7 +5,7 @@ services:
     env_file:
       - .env
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     volumes:
       # Only exercised if MONGODB_URI is unset (file-fallback mode) — keeps that path durable too.
       - ./TestRepository.json:/app/TestRepository.json

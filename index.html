@@ -610,7 +610,8 @@ function showUnlockScreen(){
     <div class="mb">
       ${profileHtml}
       <div style="margin-bottom:12px"><span class="fl">YOUR NAME</span><input id="tk-name" class="fi2" type="text" placeholder="e.g. Jane Doe" value="${lastProfile?esc(lastProfile.name):''}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
-      <div style="margin-bottom:18px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${lastProfile?esc(lastProfile.email):''}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
+      <div style="margin-bottom:12px"><span class="fl">EMAIL ADDRESS</span><input id="tk-email" class="fi2" type="email" placeholder="e.g. jane@felicitygames.com" value="${lastProfile?esc(lastProfile.email):''}" onkeydown="if(event.key==='Enter')unlockApp()"></div>
+      <div style="margin-bottom:18px"><span class="fl">TEAM KEY</span><input id="tk-key" class="fi2" type="password" placeholder="Shared team key" onkeydown="if(event.key==='Enter')unlockApp()"></div>
       <button id="tk-btn" class="cb pr" style="width:100%" onclick="unlockApp()">Unlock & Login</button>
     </div></div>`;
   document.body.appendChild(d);
@@ -618,7 +619,8 @@ function showUnlockScreen(){
 async function unlockApp(useLastProfile = false){
   let nm = '';
   let em = '';
-  
+  const tk = document.getElementById('tk-key').value.trim();
+
   if (useLastProfile === true) {
     try {
       const lastProfile = JSON.parse(localStorage.getItem('tcm_last_profile'));
@@ -630,7 +632,8 @@ async function unlockApp(useLastProfile = false){
   }
 
   if(!nm || !em) { alert('Please enter your name and email.'); return; }
-  
+  if(!tk) { alert('Please enter the team key.'); return; }
+
   if(!em.toLowerCase().endsWith('@felicitygames.com')) {
     alert('Access restricted to @felicitygames.com email addresses.');
     return;
@@ -641,8 +644,22 @@ async function unlockApp(useLastProfile = false){
   btn.textContent = 'Verifying...';
   btn.disabled = true;
 
-  // No backend key check needed anymore
-  teamKey = ''; 
+  try {
+    const r = await fetch('/api/check-auth', {headers:{'Authorization': tk}});
+    const d = await r.json();
+    if (d.locked && !d.ok) {
+      alert('Incorrect team key.');
+      btn.textContent = oldText; btn.disabled = false;
+      return;
+    }
+  } catch(e) {
+    alert('Could not reach server to verify team key.');
+    btn.textContent = oldText; btn.disabled = false;
+    return;
+  }
+
+  teamKey = tk;
+  localStorage.setItem('tcm_team_key', tk);
   userProfile = { name: nm, email: em };
   localStorage.setItem('tcm_profile', JSON.stringify(userProfile));
   localStorage.setItem('tcm_last_profile', JSON.stringify(userProfile));

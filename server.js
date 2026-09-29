@@ -13,6 +13,7 @@ const DATA_FILE = path.join(__dirname, 'TestRepository.json');
 
 const MONGODB_URI = process.env.MONGODB_URI || '';
 const SLACK_WEBHOOK = process.env.SLACK_WEBHOOK_URL || '';
+const TEAM_KEY = process.env.TEAM_KEY || '';
 
 let db = null;
 
@@ -21,7 +22,7 @@ if (MONGODB_URI) {
   const client = new MongoClient(MONGODB_URI);
   client.connect().then(() => {
     db = client.db('testcaseManager');
-    console.log('🔗 Connected to MongoDB Atlas');
+    console.log('🔗 Connected to MongoDB');
   }).catch(err => console.error('MongoDB error:', err));
 }
 
@@ -29,11 +30,21 @@ app.use(express.json({ limit: '50mb' }));
 app.use(cors());
 app.use(express.static(__dirname, { index: 'index.html', setHeaders: (res, fp) => { if (fp.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
 
-// Auth Middleware
-app.use('/api', (req, res, next) => { next(); });
+// Auth Middleware — client already sends the team key as the Authorization
+// header on every /api call (see index.html); this was previously a no-op,
+// so any client could read/wipe data regardless of key. /ping and
+// /check-auth stay open so health checks and the unlock screen still work.
+app.use('/api', (req, res, next) => {
+  if (!TEAM_KEY || req.path === '/ping' || req.path === '/check-auth') return next();
+  if (req.headers.authorization !== TEAM_KEY) return res.status(401).json({ error: 'unauthorized' });
+  next();
+});
 
 app.get('/api/ping', (_, res) => res.json({ ok: true, isDb: !!db }));
-app.get('/api/check-auth', (req, res) => res.json({ locked: false, ok: true }));
+app.get('/api/check-auth', (req, res) => {
+  if (!TEAM_KEY) return res.json({ locked: false, ok: true });
+  res.json({ locked: true, ok: req.headers.authorization === TEAM_KEY });
+});
 
 // GET Repo
 app.get('/api/repo', async (_, res) => {
