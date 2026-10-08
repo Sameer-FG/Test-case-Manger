@@ -3,4 +3,3 @@
 *.env
 !.env.example
 .DS_Store
-mongo/seed.archive
