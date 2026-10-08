@@ -14,7 +14,7 @@ services:
         condition: service_healthy
 
   mongo:
-    image: mongo:7
+    build: ./mongo
     restart: unless-stopped
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
